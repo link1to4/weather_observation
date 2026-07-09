@@ -722,184 +722,177 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="space-y-6">
             
-            {/* Left Sidebar: Station Selector */}
-            <div className="lg:col-span-1 bg-[#121214] border border-zinc-900 rounded-3xl p-4 flex flex-col lg:h-[calc(100vh-160px)] lg:min-h-[500px] shadow-sm">
-              <div className="space-y-3 mb-4">
-                <div className="relative">
+            {/* Compact Toolbar for Map Filters */}
+            <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 md:p-5 shadow-sm space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="bg-gradient-to-tr from-amber-500/10 to-amber-400/5 p-2 rounded-xl text-amber-400 border border-amber-400/20 shrink-0">
+                    <Search className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-100">即時觀測地圖篩選</h3>
+                    <p className="text-[10px] text-zinc-500">輸入關鍵字或選擇區域，地圖測站將會同步篩選與隱藏</p>
+                  </div>
+                </div>
+                
+                {/* Search query */}
+                <div className="relative w-full md:max-w-xs">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
                   <input
                     type="text"
                     placeholder="搜尋測站名稱或代碼..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
+                    className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-950 border border-zinc-850 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 transition-colors"
                   />
                 </div>
+              </div>
 
+              <div className="h-px bg-zinc-900/60" />
+
+              <div className="flex flex-col md:flex-row md:items-center gap-5 text-xs">
                 {/* Station Type Filter Tabs */}
-                <div className="flex border-b border-zinc-800 pb-1.5 mb-1 gap-3.5 text-xs">
-                  <button
-                    onClick={() => setSelectedType('all')}
-                    className={`pb-1 font-semibold border-b-2 transition-all cursor-pointer ${
-                      selectedType === 'all'
-                        ? 'border-amber-400 text-amber-400 font-bold'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    全部
-                  </button>
-                  <button
-                    onClick={() => setSelectedType('manned')}
-                    className={`pb-1 font-semibold border-b-2 transition-all cursor-pointer ${
-                      selectedType === 'manned'
-                        ? 'border-amber-400 text-amber-400 font-bold'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    有人站
-                  </button>
-                  <button
-                    onClick={() => setSelectedType('auto')}
-                    className={`pb-1 font-semibold border-b-2 transition-all cursor-pointer ${
-                      selectedType === 'auto'
-                        ? 'border-amber-400 text-amber-400 font-bold'
-                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    自動站
-                  </button>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">測站類型:</span>
+                  <div className="flex bg-zinc-950 p-1 rounded-xl border border-zinc-850 gap-1 shadow-inner">
+                    <button
+                      onClick={() => setSelectedType('all')}
+                      className={`px-3 py-1.5 font-semibold text-[11px] rounded-lg transition-all cursor-pointer ${
+                        selectedType === 'all'
+                          ? 'bg-zinc-900 border border-zinc-800 text-amber-400 font-bold'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      全部 ({stationsList.length})
+                    </button>
+                    <button
+                      onClick={() => setSelectedType('manned')}
+                      className={`px-3 py-1.5 font-semibold text-[11px] rounded-lg transition-all cursor-pointer ${
+                        selectedType === 'manned'
+                          ? 'bg-zinc-900 border border-zinc-800 text-amber-400 font-bold'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      有人站 ({stationsList.filter(s => s.attribute === '署屬有人氣象站').length})
+                    </button>
+                    <button
+                      onClick={() => setSelectedType('auto')}
+                      className={`px-3 py-1.5 font-semibold text-[11px] rounded-lg transition-all cursor-pointer ${
+                        selectedType === 'auto'
+                          ? 'bg-zinc-900 border border-zinc-800 text-amber-400 font-bold'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      自動站 ({stationsList.filter(s => s.attribute === '署屬自動氣象站').length})
+                    </button>
+                  </div>
                 </div>
 
                 {/* Region Filter Buttons */}
-                <div className="flex flex-wrap gap-1">
-                  <button
-                    onClick={() => setSelectedRegion('all')}
-                    className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all cursor-pointer ${
-                      selectedRegion === 'all'
-                        ? 'bg-amber-400 text-zinc-950 border-amber-400'
-                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-850 hover:text-zinc-200'
-                    }`}
-                  >
-                    全部地區
-                  </button>
-                  {Array.from(new Set(Object.values(REGION_MAP))).map((reg) => (
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">區域篩選:</span>
+                  <div className="flex flex-wrap gap-1">
                     <button
-                      key={reg}
-                      onClick={() => setSelectedRegion(reg)}
-                      className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all cursor-pointer ${
-                        selectedRegion === reg
-                          ? 'bg-amber-400 text-zinc-950 border-amber-400'
-                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-850 hover:text-zinc-200'
+                      onClick={() => setSelectedRegion('all')}
+                      className={`px-3 py-1.5 text-[11px] font-medium rounded-xl border transition-all cursor-pointer ${
+                        selectedRegion === 'all'
+                          ? 'bg-amber-400 text-zinc-950 border-amber-400 font-bold shadow-md shadow-amber-950/20'
+                          : 'bg-zinc-900/40 text-zinc-400 border-zinc-850 hover:bg-zinc-850 hover:text-zinc-200'
                       }`}
                     >
-                      {reg.replace('地區', '')}
+                      全部地區
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Station List */}
-              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
-                <div className="flex items-center justify-between mb-1 px-1">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block">
-                    測站列表 ({filteredStations.length})
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] text-amber-400 font-semibold">
-                      已對比 ({comparedStationIds.length}/5)
-                    </span>
-                    {comparedStationIds.length > 0 && (
-                      <button
-                        onClick={() => setComparedStationIds([])}
-                        className="text-[9px] text-zinc-500 hover:text-rose-400 font-bold transition-all cursor-pointer hover:underline underline-offset-2"
-                        title="清除所有已勾選的對比測站"
-                      >
-                        一鍵取消勾選
-                      </button>
-                    )}
+                    {Array.from(new Set(Object.values(REGION_MAP))).map((reg) => {
+                      const count = stationsList.filter(s => s.region === reg).length;
+                      return (
+                        <button
+                          key={reg}
+                          onClick={() => setSelectedRegion(reg)}
+                          className={`px-3 py-1.5 text-[11px] font-medium rounded-xl border transition-all cursor-pointer ${
+                            selectedRegion === reg
+                              ? 'bg-amber-400 text-zinc-950 border-amber-400 font-bold shadow-md shadow-amber-950/20'
+                              : 'bg-zinc-900/40 text-zinc-400 border-zinc-850 hover:bg-zinc-850 hover:text-zinc-200'
+                          }`}
+                        >
+                          {reg.replace('地區', '')} ({count})
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                {filteredStations.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-zinc-500">
-                    找不到符合的氣象站
-                  </div>
-                ) : (
-                  filteredStations.map((st) => {
-                    const isSelected = st.id === selectedStationId;
-                    const isCompared = comparedStationIds.includes(st.id);
-                    return (
-                      <button
-                        key={st.id}
-                        onClick={() => setSelectedStationId(st.id)}
-                        className={`w-full text-left p-3 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-amber-500/10 to-amber-400/5 border-amber-400/40 text-white font-medium shadow-md shadow-amber-950/20'
-                            : 'bg-zinc-900/30 border-zinc-900/40 text-zinc-400 hover:bg-zinc-850 hover:border-zinc-800 hover:text-zinc-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={isCompared}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleToggleComparison(st.id);
-                            }}
-                            className="h-4 w-4 rounded border-zinc-800 text-amber-400 focus:ring-amber-400/40 focus:ring-offset-0 bg-zinc-950 cursor-pointer accent-amber-400 shrink-0"
-                          />
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={isSelected ? "text-xs text-white font-semibold" : "text-xs text-zinc-300"}>{st.name}</span>
-                              <span className="text-[9px] text-zinc-500 font-mono">({st.id})</span>
-                              {st.attribute === '署屬自動氣象站' && (
-                                <span className="text-[8px] scale-90 bg-sky-500/10 text-sky-400 px-1 rounded-sm border border-sky-500/20">
-                                  自動
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[9px] text-zinc-500 font-normal block">{st.region}</span>
-                          </div>
-                        </div>
-                        {st.realtime?.temperature !== null && st.realtime?.temperature !== undefined ? (
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-mono font-extrabold text-emerald-400 flex items-center justify-end gap-1">
-                              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse inline-block" />
-                              {st.realtime.temperature.toFixed(1)}°
-                            </span>
-                            <span className="text-[8px] text-emerald-500 font-semibold block tracking-wide">即時</span>
-                          </div>
-                        ) : st.dailyHigh !== null ? (
-                          <div className="text-right shrink-0">
-                            <span className="text-xs font-mono font-bold text-amber-400">
-                              {st.dailyHigh.toFixed(1)}°
-                            </span>
-                            <span className="text-[8px] text-zinc-500 block">最高</span>
-                          </div>
-                        ) : null}
-                      </button>
-                    );
-                  })
-                )}
               </div>
             </div>
 
-            {/* Right Main Content */}
-            <div className="lg:col-span-3 space-y-6">
+            {/* Main Content Area */}
+            <div className="space-y-6">
               
-              {/* Weather Map Display */}
-              <WeatherMap 
-                stations={stationsList} 
-                selectedStationId={selectedStationId} 
-                onSelectStation={setSelectedStationId} 
-              />
+              <div className="space-y-4">
+                {/* Weather Map Display with dynamically filtered markers */}
+                <WeatherMap 
+                  stations={filteredStations} 
+                  selectedStationId={selectedStationId} 
+                  onSelectStation={setSelectedStationId} 
+                />
+
+                {/* Dynamic Comparison Chips Bar */}
+                {comparedStationIds.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#121214] border border-zinc-900 rounded-3xl p-4 shadow-sm text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-zinc-400 font-bold tracking-wider shrink-0 mr-1.5 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                        溫度趨勢對比中 ({comparedStationIds.length}/5)：
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {comparedStationIds.map((id) => {
+                          const st = stationsList.find((s) => s.id === id);
+                          if (!st) return null;
+                          const isSelected = st.id === selectedStationId;
+                          return (
+                            <div
+                              key={id}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                                isSelected
+                                  ? 'bg-amber-400/10 border-amber-400/30 text-amber-300 shadow-md'
+                                  : 'bg-zinc-900 border-zinc-850 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                              }`}
+                            >
+                              <button
+                                onClick={() => setSelectedStationId(id)}
+                                className="hover:underline cursor-pointer"
+                              >
+                                {st.name}
+                              </button>
+                              <button
+                                onClick={() => handleToggleComparison(id)}
+                                className="hover:text-rose-400 text-zinc-500 font-bold transition-all text-[11px] cursor-pointer pl-0.5"
+                                title="移出對比"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {comparedStationIds.length > 0 && (
+                      <button
+                        onClick={() => setComparedStationIds([selectedStationId].filter(Boolean))}
+                        className="text-[11px] text-zinc-400 hover:text-rose-400 font-bold transition-all cursor-pointer hover:underline underline-offset-4 shrink-0 border border-zinc-850 hover:border-rose-900/30 px-3 py-1.5 rounded-xl bg-zinc-950/40"
+                      >
+                        一鍵取消對比 (只保留當前站)
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               
               {/* Selected Station Core Details & Stats Card */}
               {selectedStationData && (
                 <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-6 shadow-sm">
                   
-                  {/* Station Title */}
+                  {/* Station Title with Inline Toggle Comparison */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-zinc-800 pb-5 gap-4">
                     <div className="flex items-start gap-3.5">
                       <div className="bg-amber-400/10 p-3 rounded-2xl text-amber-400 border border-amber-400/20 shrink-0">
@@ -919,6 +912,26 @@ export default function App() {
                           英文名稱: {selectedStationData.station.StationNameEN} | 屬性: {selectedStationData.station.StationAttribute}
                         </p>
                       </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      {/* Toggle Comparison Button */}
+                      <button
+                        onClick={() => handleToggleComparison(selectedStationData.station.StationID)}
+                        className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer shadow-sm ${
+                          comparedStationIds.includes(selectedStationData.station.StationID)
+                            ? 'bg-amber-400/10 border-amber-400/30 text-amber-400 hover:bg-amber-400/20'
+                            : 'bg-zinc-900/60 border-zinc-800 text-zinc-300 hover:bg-zinc-850 hover:text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={comparedStationIds.includes(selectedStationData.station.StationID)}
+                          onChange={() => {}} // Controlled by button click
+                          className="h-3.5 w-3.5 rounded border-zinc-800 text-amber-400 focus:ring-amber-400/40 bg-zinc-950 accent-amber-400 pointer-events-none"
+                        />
+                        <span>納入多站溫度對比 ({comparedStationIds.length}/5)</span>
+                      </button>
                     </div>
                   </div>
 

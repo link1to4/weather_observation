@@ -138,6 +138,8 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
+    let resizeObserver: ResizeObserver | null = null;
+
     if (!mapRef.current) {
       const map = L.map(mapContainerRef.current, {
         center: [23.7, 121.0], // Center of Taiwan
@@ -154,9 +156,25 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
 
       mapRef.current = map;
       markersGroupRef.current = L.layerGroup().addTo(map);
+
+      // Trigger automatic layout recalculation shortly after mounting
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 200);
+
+      // Watch container for dimension changes and auto-correct Leaflet sizing
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => {
+          map.invalidateSize();
+        });
+        resizeObserver.observe(mapContainerRef.current);
+      }
     }
 
     return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -396,8 +414,8 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       </div>
 
       {/* Map Element */}
-      <div className="relative flex-1 rounded-2xl border border-zinc-900 overflow-hidden h-[450px]">
-        <div ref={mapContainerRef} className="w-full h-full z-0 bg-[#09090b]" />
+      <div className="relative flex-1 rounded-2xl border border-zinc-900 overflow-hidden min-h-[450px]">
+        <div ref={mapContainerRef} className="w-full h-full min-h-[450px] z-0 bg-[#09090b]" />
 
         {/* Legend */}
         <div className="absolute bottom-4 left-4 z-[999] bg-zinc-950/90 backdrop-blur-md border border-zinc-800 px-3.5 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 select-none text-[10px]">
