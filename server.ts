@@ -188,7 +188,7 @@ async function startServer() {
           const dailyHigh = dailyHighStr && dailyHighStr !== '-99' ? parseFloat(dailyHighStr) : null;
           const dailyLow = dailyLowStr && dailyLowStr !== '-99' ? parseFloat(dailyLowStr) : null;
 
-          // Extract coordinates
+          // Extract coordinates and altitude
           const coords = st.GeoInfo?.Coordinates;
           let latitude: number | null = null;
           let longitude: number | null = null;
@@ -202,6 +202,8 @@ async function startServer() {
               longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
             }
           }
+          const altitudeStr = st.GeoInfo?.StationAltitude;
+          const altitude = altitudeStr && altitudeStr !== '-99' && altitudeStr !== '-999' && altitudeStr !== 'X' ? parseFloat(altitudeStr) : null;
 
           realtimeMap.set(sId, {
             stationId: sId,
@@ -214,7 +216,8 @@ async function startServer() {
             todayHigh: dailyHigh,
             todayLow: dailyLow,
             latitude,
-            longitude
+            longitude,
+            altitude
           });
         }
       };

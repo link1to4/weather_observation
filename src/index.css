@@ -47,3 +47,15 @@
   background: none !important;
   border: none !important;
 }
+
+/* Custom Leaflet Tooltip styling */
+.custom-leaflet-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.custom-leaflet-tooltip::before {
+  display: none !important;
+}

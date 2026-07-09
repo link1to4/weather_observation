@@ -53,6 +53,7 @@ export interface CWALocation {
     todayLow: number | null;
     latitude: number | null;
     longitude: number | null;
+    altitude?: number | null;
   };
 }
 
