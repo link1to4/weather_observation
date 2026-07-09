@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cwa-weather-analysis-dashboard
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
+        placeholder: "Enter your Gemini API Key from Google AI Studio"
+      - key: CWA_API_KEY
+        value: "CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D"
