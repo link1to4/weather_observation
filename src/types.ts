@@ -49,6 +49,8 @@ export interface CWALocation {
     windDirection: number | null;
     todayHigh: number | null;
     todayLow: number | null;
+    latitude: number | null;
+    longitude: number | null;
   };
 }
 

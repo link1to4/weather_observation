@@ -32,6 +32,7 @@ import {
   Navigation,
 } from 'lucide-react';
 import { CWALocation, CWAResponse, ChartDataPoint } from './types';
+import WeatherMap from './components/WeatherMap';
 
 // Regional classification of weather stations in Taiwan (Manned & Automatic)
 const REGION_MAP: Record<string, string> = {
@@ -870,6 +871,13 @@ export default function App() {
 
             {/* Right Main Content */}
             <div className="lg:col-span-3 space-y-6">
+              
+              {/* Weather Map Display */}
+              <WeatherMap 
+                stations={stationsList} 
+                selectedStationId={selectedStationId} 
+                onSelectStation={setSelectedStationId} 
+              />
               
               {/* Selected Station Core Details & Stats Card */}
               {selectedStationData && (

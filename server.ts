@@ -135,6 +135,21 @@ async function startServer() {
           const dailyHigh = dailyHighStr && dailyHighStr !== '-99' ? parseFloat(dailyHighStr) : null;
           const dailyLow = dailyLowStr && dailyLowStr !== '-99' ? parseFloat(dailyLowStr) : null;
 
+          // Extract coordinates
+          const coords = st.GeoInfo?.Coordinates;
+          let latitude: number | null = null;
+          let longitude: number | null = null;
+          if (Array.isArray(coords)) {
+            const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
+            if (wgs84) {
+              latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
+              longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
+            } else if (coords.length > 0) {
+              latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
+              longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
+            }
+          }
+
           realtimeMap.set(sId, {
             stationId: sId,
             obsTime,
@@ -144,7 +159,9 @@ async function startServer() {
             windSpeed,
             windDirection,
             todayHigh: dailyHigh,
-            todayLow: dailyLow
+            todayLow: dailyLow,
+            latitude,
+            longitude
           });
         }
       };
