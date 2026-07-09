@@ -3,6 +3,8 @@ export interface CWAStation {
   StationName: string;
   StationNameEN: string;
   StationAttribute: string;
+  CountyName?: string;
+  TownName?: string;
 }
 
 export interface CWAWeatherElements {

@@ -24,6 +24,59 @@ function getAIClient() {
   return aiClient;
 }
 
+const MANNED_STATIONS_COORDS: Record<string, { lat: number; lng: number }> = {
+  '466920': { lat: 25.03746, lng: 121.51485 }, // 臺北
+  '466940': { lat: 25.13331, lng: 121.74047 }, // 基隆
+  '466910': { lat: 25.18258, lng: 121.51733 }, // 鞍部
+  '466930': { lat: 25.16244, lng: 121.54453 }, // 竹子湖
+  '466900': { lat: 25.16488, lng: 121.44201 }, // 淡水
+  '466881': { lat: 25.01458, lng: 121.46231 }, // 新北
+  '466880': { lat: 25.01458, lng: 121.46231 }, // 板橋
+  '466850': { lat: 25.07111, lng: 121.78119 }, // 五分山雷達站
+  '467050': { lat: 25.00667, lng: 121.04753 }, // 新屋
+  '467571': { lat: 24.80395, lng: 120.96465 }, // 新竹
+  '467280': { lat: 24.60623, lng: 120.79691 }, // 後龍
+  '467770': { lat: 24.25603, lng: 120.52251 }, // 梧棲
+  '467490': { lat: 24.14574, lng: 120.68413 }, // 臺中
+  '467270': { lat: 23.86539, lng: 120.59011 }, // 田中
+  '467650': { lat: 23.88126, lng: 120.90807 }, // 日月潭
+  '467530': { lat: 23.50812, lng: 120.81326 }, // 阿里山
+  '467480': { lat: 23.49593, lng: 120.43283 }, // 嘉義
+  '467290': { lat: 23.63944, lng: 120.53164 }, // 古坑
+  '467420': { lat: 23.02531, lng: 120.24589 }, // 永康
+  '467410': { lat: 22.99318, lng: 120.20404 }, // 臺南
+  '467441': { lat: 22.56584, lng: 120.31575 }, // 高雄
+  '467590': { lat: 21.94319, lng: 120.79633 }, // 恆春
+  '467780': { lat: 23.14139, lng: 120.08278 }, // 七股
+  '467080': { lat: 24.76402, lng: 121.75653 }, // 宜蘭
+  '467060': { lat: 24.59689, lng: 121.84851 }, // 蘇澳
+  '466990': { lat: 23.97513, lng: 121.61327 }, // 花蓮
+  '467610': { lat: 23.13733, lng: 121.37344 }, // 成功
+  '467660': { lat: 22.75218, lng: 121.15449 }, // 臺東
+  '467540': { lat: 22.35514, lng: 120.89314 }, // 大武
+  '467550': { lat: 23.48714, lng: 120.95947 }, // 玉山
+  '460020': { lat: 23.46831, lng: 120.87364 }, // 鹿林山
+  '466950': { lat: 25.62719, lng: 122.07889 }, // 彭佳嶼
+  '467300': { lat: 23.25914, lng: 119.66751 }, // 東吉島
+  '467350': { lat: 23.56541, lng: 119.56291 }, // 澎湖
+  '467110': { lat: 24.40731, lng: 118.28892 }, // 金門
+  '467620': { lat: 22.03697, lng: 121.55831 }, // 蘭嶼
+  '467990': { lat: 26.16911, lng: 119.92348 }, // 馬祖
+};
+
+function findNearestMannedStation(lat: number, lng: number): string {
+  let minDistance = Infinity;
+  let nearestId = '466920'; // default Taipei
+  for (const [id, coords] of Object.entries(MANNED_STATIONS_COORDS)) {
+    const d = Math.pow(lat - coords.lat, 2) + Math.pow(lng - coords.lng, 2);
+    if (d < minDistance) {
+      minDistance = d;
+      nearestId = id;
+    }
+  }
+  return nearestId;
+}
+
 interface AutoStationConfig {
   id: string;
   name: string;
@@ -197,15 +250,36 @@ async function startServer() {
         }
       });
 
-      // Map each config automatic station and build virtual locations
+      // Map each retrieved automatic station and build virtual locations dynamically
       if (autoStations.length > 0) {
         try {
-          // Map each config automatic station
-          for (const config of AUTOMATIC_STATIONS) {
-            const rtStation = autoStations.find((st: any) => st.StationId === config.id);
-            if (!rtStation) continue;
+          for (const rtStation of autoStations) {
+            const sId = rtStation.StationId;
+            const name = rtStation.StationName;
+            const nameEn = rtStation.StationNameEN || rtStation.StationName || sId;
 
-            const refManned = locations.find((loc: any) => loc.station?.StationID === config.refId);
+            // Extract coordinates
+            const coords = rtStation.GeoInfo?.Coordinates;
+            let latitude: number | null = null;
+            let longitude: number | null = null;
+            if (Array.isArray(coords)) {
+              const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
+              if (wgs84) {
+                latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
+                longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
+              } else if (coords.length > 0) {
+                latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
+                longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
+              }
+            }
+
+            // Dynamically find nearest manned station
+            let refId = '466920'; // default fallback
+            if (latitude !== null && longitude !== null) {
+              refId = findNearestMannedStation(latitude, longitude);
+            }
+
+            const refManned = locations.find((loc: any) => loc.station?.StationID === refId);
             if (!refManned) continue;
 
             // Get current values
@@ -213,22 +287,21 @@ async function startServer() {
             const autoHumStr = rtStation.WeatherElement?.RelativeHumidity;
             const autoPrecStr = rtStation.WeatherElement?.Now?.Precipitation;
 
-            const autoTemp = autoTempStr && autoTempStr !== '-99' ? parseFloat(autoTempStr) : null;
-            const autoHum = autoHumStr && autoHumStr !== '-99' ? parseFloat(autoHumStr) : null;
-            const autoPrec = autoPrecStr && autoPrecStr !== '-99' ? parseFloat(autoPrecStr) : 0.0;
+            const autoTemp = autoTempStr && autoTempStr !== '-99' && autoTempStr !== '-999' && autoTempStr !== 'X' ? parseFloat(autoTempStr) : null;
+            const autoHum = autoHumStr && autoHumStr !== '-99' && autoHumStr !== '-999' && autoHumStr !== 'X' ? parseFloat(autoHumStr) : null;
+            const autoPrec = autoPrecStr && autoPrecStr !== '-99' && autoPrecStr !== '-999' && autoPrecStr !== 'X' ? parseFloat(autoPrecStr) : 0.0;
 
             // Get manned values in real-time or from existing data
-            const refRtStation = autoStations.find((st: any) => st.StationId === config.refId);
+            const refRtStation = autoStations.find((st: any) => st.StationId === refId);
             const mannedTempStr = refRtStation?.WeatherElement?.AirTemperature;
-            const mannedTemp = mannedTempStr && mannedTempStr !== '-99' ? parseFloat(mannedTempStr) : null;
+            const mannedTemp = mannedTempStr && mannedTempStr !== '-99' && mannedTempStr !== '-999' && mannedTempStr !== 'X' ? parseFloat(mannedTempStr) : null;
 
             // Calculate temperature offset
             let offset = 0.0;
             if (autoTemp !== null && mannedTemp !== null) {
               offset = autoTemp - mannedTemp;
             } else {
-              // Standard fallback offset
-              offset = config.id.startsWith('C0HA') ? -4.5 : -1.5; // mountain automatic stations are colder
+              offset = sId.startsWith('C0HA') ? -4.5 : -1.5; // mountain automatic stations are colder
             }
 
             // Derive 24-hour observation timeline from manned reference station
@@ -244,7 +317,6 @@ async function startServer() {
 
               let symHum = refHum;
               if (autoHum !== null && !isNaN(refHum)) {
-                // Adjust relative humidity with a scaling factor
                 const humDiff = autoHum - (refRtStation?.WeatherElement?.RelativeHumidity ? parseFloat(refRtStation.WeatherElement.RelativeHumidity) : refHum);
                 symHum = Math.min(100, Math.max(0, Math.round(refHum + (isNaN(humDiff) ? 0 : humDiff))));
               }
@@ -265,11 +337,11 @@ async function startServer() {
             const extremeLowStr = rtStation.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature;
 
             const refDailyStats = refManned.stationObsStatistics?.AirTemperature?.daily?.[0];
-            const syntheticDailyHigh = extremeHighStr && extremeHighStr !== '-99' 
+            const syntheticDailyHigh = extremeHighStr && extremeHighStr !== '-99' && extremeHighStr !== '-999' && extremeHighStr !== 'X'
               ? parseFloat(extremeHighStr) 
               : (refDailyStats?.Maximum ? parseFloat((refDailyStats.Maximum + offset).toFixed(1)) : null);
               
-            const syntheticDailyLow = extremeLowStr && extremeLowStr !== '-99' 
+            const syntheticDailyLow = extremeLowStr && extremeLowStr !== '-99' && extremeLowStr !== '-999' && extremeLowStr !== 'X'
               ? parseFloat(extremeLowStr) 
               : (refDailyStats?.Minimum ? parseFloat((refDailyStats.Minimum + offset).toFixed(1)) : null);
 
@@ -280,10 +352,12 @@ async function startServer() {
             // Build complete virtual station object
             const autoLocation = {
               station: {
-                StationID: config.id,
-                StationName: config.name,
-                StationNameEN: config.nameEn,
-                StationAttribute: '署屬自動氣象站'
+                StationID: sId,
+                StationName: name,
+                StationNameEN: nameEn,
+                StationAttribute: '署屬自動氣象站',
+                CountyName: rtStation.GeoInfo?.CountyName || refManned.station?.CountyName || '',
+                TownName: rtStation.GeoInfo?.TownName || refManned.station?.TownName || '',
               },
               stationObsTimes: {
                 stationObsTime: syntheticObsTimes
@@ -300,13 +374,13 @@ async function startServer() {
                   ]
                 }
               },
-              realtime: realtimeMap.get(config.id)
+              realtime: realtimeMap.get(sId) || null
             };
 
             locations.push(autoLocation);
           }
         } catch (e) {
-          console.error('Error merging automatic stations:', e);
+          console.error('Error merging automatic stations dynamically:', e);
         }
       }
 
@@ -324,9 +398,13 @@ async function startServer() {
       return res.status(400).json({ error: 'stationId parameter is required' });
     }
 
-    const isAutoStation = AUTOMATIC_STATIONS.find(st => st.id === stationId);
-    const targetStationId = isAutoStation ? isAutoStation.refId : stationId;
-    const stationName = isAutoStation ? isAutoStation.name : null;
+    const isAuto = stationId.startsWith('C') || stationId.startsWith('A') || isNaN(Number(stationId));
+    let targetStationId = stationId;
+    let stationName: string | null = null;
+    let offset = 0.0;
+    let liveHigh: number | null = null;
+    let liveLow: number | null = null;
+    let liveTemp: number | null = null;
 
     try {
       const authorization = process.env.CWA_API_KEY || 'CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D';
@@ -349,33 +427,7 @@ async function startServer() {
       }
       const datesParam = dateStrings.join(',');
 
-      // Fetch offset, historical 30-day stats, and realtime today statistics in parallel
-      const autoUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${authorization}&format=JSON`;
-      const mannedRealtimeUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${authorization}&format=JSON`;
-      const historicalUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/C-B0024-001?Authorization=${authorization}&format=JSON&StationID=${targetStationId}&WeatherElement=AirTemperature&Date=${datesParam}`;
-
-      console.log(`Fetching 30-day real weather data and live today's stats for ${stationId}...`);
-      const [autoRes, mannedRealtimeRes, histResponse] = await Promise.all([
-        fetch(autoUrl).catch(e => {
-          console.error('Failed to fetch auto stations in monthly:', e);
-          return null;
-        }),
-        fetch(mannedRealtimeUrl).catch(e => {
-          console.error('Failed to fetch manned realtime in monthly:', e);
-          return null;
-        }),
-        fetch(historicalUrl).catch(e => {
-          console.error('Failed to fetch historical monthly:', e);
-          return null;
-        })
-      ]);
-
-      // 1. Calculate the real-time temperature offset if it is an automatic station
-      let offset = 0.0;
-      let liveHigh = null;
-      let liveLow = null;
-      let liveTemp = null;
-
+      // Helper function to extract realtime temperature statistics for the requested station
       const parseLiveStation = (stationList: any[]) => {
         if (!Array.isArray(stationList)) return;
         const st = stationList.find((s: any) => s.StationId === stationId);
@@ -390,28 +442,73 @@ async function startServer() {
         }
       };
 
+      // 1. Fetch O-A0001-001 first to find the coordinates of the target station if it is automatic
+      const autoUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${authorization}&format=JSON`;
+      const autoRes = await fetch(autoUrl).catch(e => {
+        console.error('Failed to fetch auto stations in monthly:', e);
+        return null;
+      });
+
       if (autoRes && autoRes.ok) {
         try {
           const autoData = await autoRes.json();
           const autoStations = autoData?.records?.Station || [];
           parseLiveStation(autoStations);
 
-          if (isAutoStation) {
-            const rtStation = autoStations.find((st: any) => st.StationId === stationId);
-            const refRtStation = autoStations.find((st: any) => st.StationId === isAutoStation.refId);
-            const autoTempStr = rtStation?.WeatherElement?.AirTemperature;
-            const refTempStr = refRtStation?.WeatherElement?.AirTemperature;
+          const rtStation = autoStations.find((st: any) => st.StationId === stationId);
+          if (rtStation) {
+            stationName = rtStation.StationName;
+            
+            if (isAuto) {
+              const coords = rtStation.GeoInfo?.Coordinates;
+              let latitude: number | null = null;
+              let longitude: number | null = null;
+              if (Array.isArray(coords)) {
+                const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
+                if (wgs84) {
+                  latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
+                  longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
+                } else if (coords.length > 0) {
+                  latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
+                  longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
+                }
+              }
 
-            if (autoTempStr && refTempStr && autoTempStr !== '-99' && refTempStr !== '-99') {
-              offset = parseFloat(autoTempStr) - parseFloat(refTempStr);
-              console.log(`Dynamic monthly offset for ${stationId} vs ${isAutoStation.refId}: ${offset.toFixed(1)}°C`);
+              if (latitude !== null && longitude !== null) {
+                targetStationId = findNearestMannedStation(latitude, longitude);
+
+                // Compute real-time temperature difference between this auto station and nearest reference manned station
+                const refRtStation = autoStations.find((st: any) => st.StationId === targetStationId);
+                const refTempStr = refRtStation?.WeatherElement?.AirTemperature;
+                const refTemp = refTempStr && refTempStr !== '-99' && refTempStr !== '-999' && refTempStr !== 'X' ? parseFloat(refTempStr) : null;
+
+                if (liveTemp !== null && refTemp !== null) {
+                  offset = liveTemp - refTemp;
+                  console.log(`Dynamic monthly offset for ${stationId} vs ${targetStationId}: ${offset.toFixed(1)}°C`);
+                }
+              }
             }
           }
         } catch (e) {
-          console.error('Error parsing auto stations in monthly:', e);
+          console.error('Error parsing auto stations in monthly dynamic:', e);
         }
       }
 
+      // 2. Fetch manned realtime observations and historical records in parallel
+      const mannedRealtimeUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${authorization}&format=JSON`;
+      const historicalUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/C-B0024-001?Authorization=${authorization}&format=JSON&StationID=${targetStationId}&WeatherElement=AirTemperature&Date=${datesParam}`;
+
+      console.log(`Fetching 30-day real weather data and live today's stats for ${stationId} (target ref: ${targetStationId})...`);
+      const [mannedRealtimeRes, histResponse] = await Promise.all([
+        fetch(mannedRealtimeUrl).catch(e => {
+          console.error('Failed to fetch manned realtime in monthly:', e);
+          return null;
+        }),
+        fetch(historicalUrl).catch(e => {
+          console.error('Failed to fetch historical monthly:', e);
+          return null;
+        })
+      ]);
       if (mannedRealtimeRes && mannedRealtimeRes.ok) {
         try {
           const mannedRealtimeData = await mannedRealtimeRes.json();
