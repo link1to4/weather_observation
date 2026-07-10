@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import * as cheerio from 'cheerio';
 
 // Lazy initialization of Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -624,6 +625,86 @@ async function startServer() {
     } catch (error: any) {
       console.error(`Error generating monthly weather for ${stationId}:`, error);
       res.status(500).json({ error: error.message || 'Failed to fetch monthly weather' });
+    }
+  });
+
+  // API Route for 24-hour observation timeline scraped directly from OBS_Station
+  app.get('/api/weather/hourly', async (req, res) => {
+    const { stationId } = req.query;
+    if (!stationId || typeof stationId !== 'string') {
+      return res.status(400).json({ error: 'stationId parameter is required' });
+    }
+
+    // "測站id去掉最後一碼" (station ID with its last character removed)
+    const idWithoutLast = stationId.slice(0, -1);
+    const url = `https://www.cwa.gov.tw/V8/C/W/Observe/MOD/24hr/${idWithoutLast}.html`;
+
+    try {
+      console.log(`Fetching 24h hourly observation for station ${stationId} (scraped ID: ${idWithoutLast}) from ${url}`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`CWA returned status ${response.status}`);
+      }
+      const html = await response.text();
+
+      const $ = cheerio.load('<table><tbody>' + html + '</tbody></table>');
+      const list: any[] = [];
+
+      $('tr').each((_, tr) => {
+        const headersMap: Record<string, string> = {};
+        $(tr).find('td, th').each((__, cell) => {
+          const h = $(cell).attr('headers');
+          const text = $(cell).find('span.is-active').length > 0 
+            ? $(cell).find('span.is-active').text().trim() 
+            : $(cell).text().trim();
+          headersMap[h || 'time'] = text.replace(/\s+/g, ' ');
+        });
+
+        const timeStr = headersMap['time'] || '';
+        const tempStr = headersMap['temp'] || '';
+        const humStr = headersMap['hum'] || '';
+        const rainStr = headersMap['rain'] || '';
+
+        const temperature = tempStr && tempStr !== '-' && tempStr !== '無觀測' ? parseFloat(tempStr) : null;
+        const humidity = humStr && humStr !== '-' && humStr !== '無觀測' ? parseFloat(humStr) : null;
+        const precipitation = rainStr && rainStr !== '-' && rainStr !== '無觀測' ? parseFloat(rainStr) : null;
+
+        let dateTimeStr = '';
+        try {
+          const currentYear = new Date().getFullYear();
+          const match = timeStr.match(/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+          if (match) {
+            const [_, month, day, hours, minutes] = match;
+            dateTimeStr = `${currentYear}-${month}-${day}T${hours}:${minutes}:00`;
+          } else {
+            dateTimeStr = new Date().toISOString();
+          }
+        } catch (e) {
+          dateTimeStr = new Date().toISOString();
+        }
+
+        if (timeStr) {
+          list.push({
+            time: timeStr,
+            dateTime: dateTimeStr,
+            temperature,
+            humidity,
+            precipitation
+          });
+        }
+      });
+
+      // Reverse so it's chronologically ascending (past to present)
+      list.reverse();
+
+      res.json({
+        stationId,
+        scrapedId: idWithoutLast,
+        data: list
+      });
+    } catch (e: any) {
+      console.error(`Error scraping hourly weather for station ${stationId}:`, e);
+      res.status(500).json({ error: e.message || 'Failed to fetch hourly weather' });
     }
   });
 

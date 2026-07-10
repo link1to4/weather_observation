@@ -167,6 +167,11 @@ export default function App() {
   });
   const [comparedMonthlyData, setComparedMonthlyData] = useState<Record<string, any[]>>({});
 
+  // Hourly 24h scraped states
+  const [hourlyData, setHourlyData] = useState<Record<string, any[]>>({});
+  const [hourlyLoading, setHourlyLoading] = useState<boolean>(false);
+  const [hourlyError, setHourlyError] = useState<string | null>(null);
+
   // Monthly 30-day historical states
   const [monthlyData, setMonthlyData] = useState<{ date: string; high: number; low: number; mean: number }[] | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState<boolean>(false);
@@ -250,6 +255,44 @@ export default function App() {
     }
   };
 
+  // Fetch 24-hour scraped hourly observations
+  const fetchHourlyData = async (stationId: string) => {
+    setHourlyLoading(true);
+    setHourlyError(null);
+    try {
+      const response = await fetch(`/api/weather/hourly?stationId=${stationId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch hourly data: ${response.statusText}`);
+      }
+      const json = await response.json();
+      setHourlyData(prev => ({
+        ...prev,
+        [stationId]: json.data || []
+      }));
+    } catch (err: any) {
+      console.error(err);
+      setHourlyError(err.message || '無法取得該測站之24小時變化數據');
+    } finally {
+      setHourlyLoading(false);
+    }
+  };
+
+  // Helper to fetch comparison hourly data silently
+  const fetchHourlyDataForComparison = async (stationId: string) => {
+    try {
+      const response = await fetch(`/api/weather/hourly?stationId=${stationId}`);
+      if (response.ok) {
+        const json = await response.json();
+        setHourlyData(prev => ({
+          ...prev,
+          [stationId]: json.data || []
+        }));
+      }
+    } catch (err) {
+      console.error(`Failed to fetch comparison hourly data for ${stationId}`, err);
+    }
+  };
+
   // Request AI-generated 1-month climate trend analysis
   const fetchAIAnalysis = async () => {
     if (!selectedStationId || !selectedStationData || !monthlyData) return;
@@ -286,6 +329,7 @@ export default function App() {
   // Fetch monthly data and reset AI report whenever selected station changes
   useEffect(() => {
     if (selectedStationId) {
+      fetchHourlyData(selectedStationId);
       fetchMonthlyData(selectedStationId);
       setAiAnalysis(null);
       setAiError(null);
@@ -303,19 +347,24 @@ export default function App() {
       if (!comparedMonthlyData[id]) {
         fetchMonthlyDataForComparison(id);
       }
+      if (!hourlyData[id]) {
+        fetchHourlyDataForComparison(id);
+      }
     });
-  }, [comparedStationIds]);
+  }, [comparedStationIds, comparedMonthlyData, hourlyData]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchData(true);
     if (selectedStationId) {
+      fetchHourlyData(selectedStationId);
       fetchMonthlyData(selectedStationId);
       setAiAnalysis(null);
       setAiError(null);
     }
     // Refresh cached comparison data
     comparedStationIds.forEach(id => {
+      fetchHourlyDataForComparison(id);
       if (id !== selectedStationId) {
         fetchMonthlyDataForComparison(id);
       }
@@ -413,79 +462,40 @@ export default function App() {
 
   // Format hourly data for line chart
   const hourlyChartData = useMemo(() => {
-    if (!selectedStationData?.stationObsTimes?.stationObsTime) return [];
-    
-    return selectedStationData.stationObsTimes.stationObsTime
-      .map((obs) => {
-        // Parse time to display format e.g., "14:00"
-        let displayTime = '';
-        try {
-          const date = new Date(obs.DateTime);
-          const hours = String(date.getHours()).padStart(2, '0');
-          displayTime = `${hours}:00`;
-        } catch (e) {
-          displayTime = obs.DateTime;
-        }
+    const records = hourlyData[selectedStationId] || [];
+    if (records.length === 0) return [];
 
-        const tempStr = obs.weatherElements.AirTemperature;
-        const humStr = obs.weatherElements.RelativeHumidity;
-        const precStr = obs.weatherElements.Precipitation;
-
-        const temperature = tempStr && tempStr !== '' && tempStr !== 'X' ? parseFloat(tempStr) : null;
-        const humidity = humStr && humStr !== '' && humStr !== 'X' ? parseFloat(humStr) : null;
-        const precipitation = precStr && precStr !== '' && precStr !== 'X' && precStr !== 'T' ? parseFloat(precStr) : (precStr === 'T' ? 0.05 : null);
-
+    return records
+      .map((item) => {
         return {
-          time: displayTime,
-          temperature,
-          humidity,
-          precipitation,
+          time: item.time, // Keep full original time (e.g. "07/10 16:00") to avoid duplicate keys in Recharts
+          temperature: item.temperature,
+          humidity: item.humidity,
+          precipitation: item.precipitation,
         };
       })
       .filter((d) => d.temperature !== null); // Only plot hours with valid temperatures
-  }, [selectedStationData]);
+  }, [hourlyData, selectedStationId]);
 
   // Generate hourly multi-station comparative dataset
   const comparisonHourlyChartData = useMemo(() => {
-    if (!data?.records?.location || comparedStationIds.length === 0) return [];
+    const primaryRecords = hourlyData[selectedStationId] || [];
+    if (primaryRecords.length === 0 || comparedStationIds.length === 0) return [];
 
-    const comparedLocs = comparedStationIds.map(id =>
-      data.records.location.find(loc => loc.station.StationID === id)
-    ).filter(Boolean);
+    return primaryRecords.map((refItem) => {
+      const point: Record<string, any> = { time: refItem.time }; // Keep full original time to avoid duplicate keys in Recharts
 
-    if (comparedLocs.length === 0) return [];
+      comparedStationIds.forEach(id => {
+        const stationName = stationsList.find(st => st.id === id)?.name || id;
+        const stationRecords = hourlyData[id] || [];
+        
+        // Find matching record by matching the exact time string (e.g. "07/10 16:00")
+        // fallback to matching just the hour if dates are different
+        const matchRecord = stationRecords.find(r => r.time === refItem.time) || 
+                            stationRecords.find(r => r.time.endsWith(refItem.time.substring(5)));
 
-    // Use the base timeline of the primary selected station
-    const primaryLoc = data.records.location.find(loc => loc.station.StationID === selectedStationId) || comparedLocs[0];
-    const baseObsTimes = primaryLoc?.stationObsTimes?.stationObsTime || [];
-
-    return baseObsTimes.map((baseObs, index) => {
-      let displayTime = '';
-      try {
-        const date = new Date(baseObs.DateTime);
-        const hours = String(date.getHours()).padStart(2, '0');
-        displayTime = `${hours}:00`;
-      } catch (e) {
-        displayTime = baseObs.DateTime;
-      }
-
-      const point: Record<string, any> = { time: displayTime };
-
-      comparedLocs.forEach(loc => {
-        const stationName = loc!.station.StationName;
-        const obsList = loc!.stationObsTimes?.stationObsTime || [];
-        const obs = obsList[index] || obsList.find(o => {
-          try {
-            return new Date(o.DateTime).getHours() === new Date(baseObs.DateTime).getHours();
-          } catch (e) {
-            return false;
-          }
-        });
-
-        if (obs) {
-          const tempStr = obs.weatherElements.AirTemperature;
-          const temp = tempStr && tempStr !== '' && tempStr !== 'X' ? parseFloat(tempStr) : null;
-          point[stationName] = temp;
+        if (matchRecord) {
+          point[stationName] = matchRecord.temperature;
         } else {
           point[stationName] = null;
         }
@@ -493,7 +503,7 @@ export default function App() {
 
       return point;
     });
-  }, [data, comparedStationIds, selectedStationId]);
+  }, [hourlyData, comparedStationIds, selectedStationId, stationsList]);
 
   // Generate monthly multi-station comparative dataset using daily average
   const comparisonMonthlyChartData = useMemo(() => {
@@ -1133,6 +1143,10 @@ export default function App() {
                                     fontSize={10} 
                                     tickLine={false} 
                                     axisLine={false}
+                                    tickFormatter={(val) => {
+                                      const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
+                                      return match ? match[1] : val;
+                                    }}
                                   />
                                   <YAxis 
                                     yAxisId="left"
@@ -1222,6 +1236,10 @@ export default function App() {
                                     fontSize={10} 
                                     tickLine={false} 
                                     axisLine={false}
+                                    tickFormatter={(val) => {
+                                      const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
+                                      return match ? match[1] : val;
+                                    }}
                                   />
                                   <YAxis 
                                     yAxisId="left"
@@ -1258,7 +1276,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Hourly Wind / rain/ pressure details at selected station */}
+                      {/* Hourly Wind / rain/ pressure details at selected station */}
                         <div className="mt-6 border-t border-zinc-800 pt-6">
                           <h4 className="text-xs font-bold text-zinc-400 mb-3">其他每小時觀測指標 (選取時間)</h4>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
