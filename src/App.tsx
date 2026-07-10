@@ -148,7 +148,13 @@ export default function App() {
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStationId, setSelectedStationId] = useState<string>('466920'); // Default to Taipei (466920)
+  const [selectedStationId, setSelectedStationId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('defaultStationId') || '466920';
+    } catch {
+      return '466920';
+    }
+  }); // Default to Taipei (466920) or last saved station
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<'all' | 'manned' | 'auto'>('all');
@@ -156,7 +162,14 @@ export default function App() {
   const [weatherElement, setWeatherElement] = useState<'DailyHigh' | 'DailyLow' | 'DailyMean'>('DailyHigh');
 
   // Comparison states
-  const [comparedStationIds, setComparedStationIds] = useState<string[]>(['466920']);
+  const [comparedStationIds, setComparedStationIds] = useState<string[]>(() => {
+    try {
+      const defaultId = localStorage.getItem('defaultStationId') || '466920';
+      return [defaultId];
+    } catch {
+      return ['466920'];
+    }
+  });
   const [comparedMonthlyData, setComparedMonthlyData] = useState<Record<string, any[]>>({});
 
   // Monthly 30-day historical states
@@ -281,17 +294,11 @@ export default function App() {
       fetchMonthlyData(selectedStationId);
       setAiAnalysis(null);
       setAiError(null);
-
-      // Automatically keep the selected station in the comparison list
-      setComparedStationIds(prev => {
-        if (!prev.includes(selectedStationId)) {
-          if (prev.length >= 5) {
-            return [...prev.slice(1), selectedStationId];
-          }
-          return [...prev, selectedStationId];
-        }
-        return prev;
-      });
+      try {
+        localStorage.setItem('defaultStationId', selectedStationId);
+      } catch (err) {
+        console.error('Failed to save defaultStationId to localStorage', err);
+      }
     }
   }, [selectedStationId]);
 
