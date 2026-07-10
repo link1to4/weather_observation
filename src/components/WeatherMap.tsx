@@ -342,7 +342,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   };
 
   return (
-    <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden flex flex-col h-full min-h-[360px] sm:min-h-[450px] md:min-h-[550px]">
+    <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden flex flex-col h-[70vh] md:h-[calc(100vh-220px)] min-h-[450px] sm:min-h-[550px] md:min-h-[650px]">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2">
