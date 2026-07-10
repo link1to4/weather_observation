@@ -9,9 +9,6 @@ import {
   Tooltip,
   Legend,
   ReferenceLine,
-  BarChart,
-  Bar,
-  Cell,
   Label,
 } from 'recharts';
 import {
@@ -29,7 +26,6 @@ import {
   Info,
   AlertCircle,
   TrendingDown,
-  Navigation,
 } from 'lucide-react';
 import { CWALocation, CWAResponse, ChartDataPoint } from './types';
 import WeatherMap from './components/WeatherMap';
@@ -159,7 +155,6 @@ export default function App() {
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<'all' | 'manned' | 'auto'>('all');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [weatherElement, setWeatherElement] = useState<'DailyHigh' | 'DailyLow' | 'DailyMean'>('DailyHigh');
 
   // Comparison states
   const [comparedStationIds, setComparedStationIds] = useState<string[]>(() => {
@@ -543,22 +538,6 @@ export default function App() {
     };
   }, [selectedStationData]);
 
-  // Rank stations by the selected weather element (e.g., Daily High) for comparison chart
-  const rankedStationsData = useMemo(() => {
-    return stationsList
-      .filter((st) => {
-        if (weatherElement === 'DailyHigh') return st.dailyHigh !== null;
-        if (weatherElement === 'DailyLow') return st.dailyLow !== null;
-        return st.dailyMean !== null;
-      })
-      .map((st) => ({
-        name: st.name,
-        id: st.id,
-        value: weatherElement === 'DailyHigh' ? st.dailyHigh! : weatherElement === 'DailyLow' ? st.dailyLow! : st.dailyMean!,
-      }))
-      .sort((a, b) => b.value - a.value); // Sort descending
-  }, [stationsList, weatherElement]);
-
   // Calculate stats across all of Taiwan
   const taiwanStats = useMemo(() => {
     if (stationsList.length === 0) return null;
@@ -634,22 +613,6 @@ export default function App() {
               </div>
             ))}
           </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const CustomRankTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-[#121214] border border-zinc-800 p-2.5 shadow-2xl rounded-xl text-xs font-sans text-zinc-100">
-          <p className="font-semibold text-zinc-300">{data.name} 測站</p>
-          <p className="text-amber-400 font-bold mt-1">
-            {weatherElement === 'DailyHigh' ? '最高溫度' : weatherElement === 'DailyLow' ? '最低溫度' : '平均溫度'}: {payload[0].value} °C
-          </p>
-          <p className="text-zinc-500 text-[10px] mt-0.5">測站代碼: {data.id}</p>
         </div>
       );
     }
@@ -1682,126 +1645,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Taiwan Stations Comparison Chart */}
-              <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-6 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                  <div>
-                    <h3 className="text-base font-bold text-white">全臺局屬氣象站觀測排行比較</h3>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      排序顯示所有氣象站昨日的指標，點擊柱狀圖可直接切換檢視該測站之 24 小時折線圖
-                    </p>
-                  </div>
-                  {/* Selector to rank by High, Low or Mean */}
-                  <div className="flex items-center bg-zinc-950 border border-zinc-850 p-1 rounded-xl">
-                    <button
-                      onClick={() => setWeatherElement('DailyHigh')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                        weatherElement === 'DailyHigh'
-                          ? 'bg-zinc-850 border border-zinc-800 text-amber-400 shadow-sm font-semibold'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      最高溫度
-                    </button>
-                    <button
-                      onClick={() => setWeatherElement('DailyLow')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                        weatherElement === 'DailyLow'
-                          ? 'bg-zinc-850 border border-zinc-800 text-sky-400 shadow-sm font-semibold'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      最低溫度
-                    </button>
-                    <button
-                      onClick={() => setWeatherElement('DailyMean')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                        weatherElement === 'DailyMean'
-                          ? 'bg-zinc-850 border border-zinc-800 text-teal-400 shadow-sm font-semibold'
-                          : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      平均溫度
-                    </button>
-                  </div>
-                </div>
 
-                {/* Bar chart displaying all stations */}
-                <div className="h-[280px] w-full bg-zinc-950/50 rounded-2xl p-2 border border-zinc-900">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={rankedStationsData}
-                      margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
-                      onClick={(e: any) => {
-                        if (e && e.activePayload && e.activePayload[0]) {
-                          const clickedId = e.activePayload[0].payload.id;
-                          setSelectedStationId(clickedId);
-                          // Scroll to top of the detailed dashboard
-                          window.scrollTo({ top: 120, behavior: 'smooth' });
-                        }
-                      }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis
-                        dataKey="name"
-                        stroke="#71717a"
-                        fontSize={9}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        stroke="#71717a"
-                        fontSize={9}
-                        tickLine={false}
-                        axisLine={false}
-                        domain={[0, 'auto']}
-                      />
-                      <Tooltip content={<CustomRankTooltip />} cursor={{ fill: 'rgba(251, 191, 36, 0.03)' }} />
-                      <Bar
-                        dataKey="value"
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={28}
-                        className="cursor-pointer"
-                      >
-                        {rankedStationsData.map((entry, index) => {
-                          const isSelected = entry.id === selectedStationId;
-                          let barColor = '#3f3f46'; // Default zinc-600
-                          if (isSelected) {
-                            barColor = '#fbbf24'; // Selected: Amber Gold
-                          } else {
-                            // Scale color based on value for a hot/cold heatmap effect
-                            if (weatherElement === 'DailyHigh') {
-                              if (entry.value > 33) barColor = '#ef4444'; // Red-500
-                              else if (entry.value > 30) barColor = '#f59e0b'; // Amber-500
-                              else barColor = '#fbbf24'; // Amber-400
-                            } else if (weatherElement === 'DailyLow') {
-                              if (entry.value < 22) barColor = '#0ea5e9'; // Sky-500
-                              else if (entry.value < 25) barColor = '#38bdf8'; // Sky-400
-                              else barColor = '#2dd4bf'; // Teal-400
-                            } else {
-                              barColor = '#10b981'; // Emerald-500
-                            }
-                          }
-
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={barColor}
-                              stroke={isSelected ? '#d97706' : undefined}
-                              strokeWidth={isSelected ? 1.5 : 0}
-                            />
-                          );
-                        })}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <div className="flex items-center gap-1.5 mt-4 justify-center text-[10px] text-zinc-500 font-medium">
-                  <Navigation className="h-3 w-3 rotate-45 text-amber-400" />
-                  <span>提示：點擊任何測站的柱狀，即可在上方檢視其 24 小時詳細觀測折線圖</span>
-                </div>
-              </div>
 
             </div>
           </div>
