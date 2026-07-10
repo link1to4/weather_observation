@@ -344,8 +344,8 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   };
 
   return (
-    <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden flex flex-col h-[70vh] md:h-[calc(100vh-220px)] min-h-[450px] sm:min-h-[550px] md:min-h-[650px]">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+    <div className="bg-[#121214] border border-zinc-900 rounded-2xl sm:rounded-3xl p-3 sm:p-5 shadow-sm relative overflow-hidden flex flex-col h-[calc(100vh-110px)] sm:h-[calc(100vh-150px)] md:h-[calc(100vh-180px)] min-h-[380px] sm:min-h-[500px] md:min-h-[600px]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-2.5 sm:mb-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 relative">
@@ -396,8 +396,8 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       </div>
 
       {/* Map Element */}
-      <div className="relative flex-1 rounded-2xl border border-zinc-900 overflow-hidden min-h-[250px] sm:min-h-[350px] md:min-h-[450px]">
-        <div ref={mapContainerRef} className="w-full h-full min-h-[250px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
+      <div className="relative flex-1 rounded-xl sm:rounded-2xl border border-zinc-900 overflow-hidden min-h-[200px] sm:min-h-[350px] md:min-h-[450px]">
+        <div ref={mapContainerRef} className="w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
 
         {/* Legend */}
         <div className="absolute bottom-4 left-4 z-[999] bg-zinc-950/90 backdrop-blur-md border border-zinc-800/80 p-3.5 rounded-2xl shadow-xl flex-col gap-1.5 select-none w-[115px] hidden sm:flex">

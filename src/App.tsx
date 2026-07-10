@@ -632,29 +632,29 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-100 font-sans selection:bg-amber-500/20 selection:text-amber-200">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-[#09090b]/80 backdrop-blur-md border-b border-zinc-900 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-amber-500 to-amber-300 p-2.5 rounded-xl text-zinc-950 shadow-md">
-              <Sun className="h-6 w-6 animate-spin-slow" />
+      <header className="sticky top-0 z-10 bg-[#09090b]/80 backdrop-blur-md border-b border-zinc-900 px-4 sm:px-6 py-3 sm:py-4">
+        <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="bg-gradient-to-tr from-amber-500 to-amber-300 p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl text-zinc-950 shadow-md shrink-0">
+              <Sun className="h-4 sm:h-6 w-4 sm:w-6 animate-spin-slow" />
             </div>
             <div>
-              <div className="font-serif italic text-xs text-amber-400 tracking-wider font-light uppercase mb-0.5">
+              <div className="font-serif italic text-[10px] sm:text-xs text-amber-400 tracking-wider font-light uppercase mb-0.5 hidden sm:block">
                 Meteorological Data Service
               </div>
-              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <h1 className="text-sm sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
                 臺灣氣象局屬觀測日報
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20">
+                <span className="text-[8px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0 hidden sm:inline-block">
                   C-B0024-001
                 </span>
               </h1>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 hidden md:block">
                 中央氣象署 (CWA) 局屬氣象觀測站 - 24小時溫度與氣候日報折線圖
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 self-end md:self-center">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div className="text-right hidden sm:block">
               <span className="text-[10px] text-zinc-500 block">觀測數據日期</span>
               <span className="text-xs font-mono font-medium text-zinc-300">
@@ -668,17 +668,17 @@ export default function App() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing || loading}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-300 bg-zinc-900 hover:bg-zinc-850 active:bg-zinc-800 border border-zinc-800 rounded-xl transition-all duration-200 shadow-sm disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold text-zinc-300 bg-zinc-900 hover:bg-zinc-850 active:bg-zinc-800 border border-zinc-800 rounded-lg sm:rounded-xl transition-all duration-200 shadow-sm disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`h-3.5 w-3.5 text-zinc-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-              重新整理
+              <span className="hidden sm:inline">重新整理</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-3 sm:py-6 space-y-3 sm:space-y-6">
         {loading ? (
           <div className="h-[60vh] flex flex-col items-center justify-center gap-3 bg-[#121214] border border-zinc-900 rounded-3xl shadow-sm">
             <div className="relative">
@@ -702,10 +702,10 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-3 sm:space-y-6">
             
             {/* Compact Toolbar for Map Filters */}
-            <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 md:p-5 shadow-sm space-y-4">
+            <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 md:p-5 shadow-sm space-y-3 sm:space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-2.5">
                   <div className="bg-gradient-to-tr from-amber-500/10 to-amber-400/5 p-2 rounded-xl text-amber-400 border border-amber-400/20 shrink-0">
@@ -806,9 +806,9 @@ export default function App() {
             </div>
 
             {/* Main Content Area */}
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {/* Weather Map Display with dynamically filtered markers */}
                 <WeatherMap 
                   stations={filteredStations} 
