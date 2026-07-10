@@ -24,11 +24,9 @@
 
 /* Custom Leaflet Dark styles for weather map popups and markers */
 .custom-leaflet-popup .leaflet-popup-content-wrapper {
-  background: #121214 !important;
-  color: #f4f4f5 !important;
-  border: 1px solid #27272a !important;
-  border-radius: 16px !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.6) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   padding: 0 !important;
 }
 
@@ -37,10 +35,8 @@
   line-height: inherit !important;
 }
 
-.custom-leaflet-popup .leaflet-popup-tip {
-  background: #121214 !important;
-  border-left: 1px solid #27272a !important;
-  border-bottom: 1px solid #27272a !important;
+.custom-leaflet-popup .leaflet-popup-tip-container {
+  display: none !important;
 }
 
 .custom-weather-marker {

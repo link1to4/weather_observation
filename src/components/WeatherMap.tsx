@@ -283,42 +283,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
         className: 'custom-leaflet-tooltip'
       });
 
-      const popupHtml = `
-        <div class="p-4 font-sans text-zinc-100 min-w-[200px] rounded-2xl bg-zinc-950/95 border border-zinc-800 select-none">
-          <div class="font-bold text-sm text-white border-b border-zinc-800 pb-2 mb-2 flex justify-between items-center gap-4">
-            <span>${station.name} 觀測站</span>
-            <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-850 text-zinc-400">#${station.id}</span>
-          </div>
-          <div class="space-y-2 text-xs">
-            <div class="flex justify-between items-center py-0.5">
-              <span class="text-zinc-500 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-400" />目前溫度</span>
-              <span class="font-mono font-bold text-amber-300 text-sm">${station.realtime?.temperature !== null ? `${station.realtime?.temperature?.toFixed(1)}°C` : (station.dailyHigh !== null ? `${station.dailyHigh?.toFixed(1)}°C` : '--')}</span>
-            </div>
-            <div class="flex justify-between items-center py-0.5">
-              <span class="text-zinc-500 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-sky-400" />相對濕度</span>
-              <span class="font-mono font-semibold text-sky-400">${station.realtime?.humidity !== null ? `${station.realtime?.humidity}%` : '--'}</span>
-            </div>
-            <div class="flex justify-between items-center py-0.5">
-              <span class="text-zinc-500 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-teal-400" />今日雨量</span>
-              <span class="font-mono font-semibold text-teal-400">${station.realtime?.precipitation !== null ? `${station.realtime?.precipitation?.toFixed(1)} mm` : '0.0 mm'}</span>
-            </div>
-            <div class="flex justify-between items-center py-0.5">
-              <span class="text-zinc-500 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-400" />測站海拔</span>
-              <span class="font-mono font-semibold text-orange-400">${altitude !== null ? `${altitude.toFixed(1)} m` : '-- m'}</span>
-            </div>
-            ${station.realtime?.windSpeed !== null ? `
-            <div class="flex justify-between items-center py-0.5">
-              <span class="text-zinc-500 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-zinc-400" />風速風向</span>
-              <span class="font-mono font-semibold text-zinc-300">${station.realtime?.windSpeed?.toFixed(1)} m/s (${station.realtime?.windDirection ?? ''}°)</span>
-            </div>
-            ` : ''}
-            <div class="flex justify-between text-[10px] text-zinc-500 pt-2 mt-2 border-t border-zinc-900">
-              <span class="font-medium px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-850">${station.region}</span>
-              <span class="font-medium px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-850">${station.attribute.replace('署屬', '')}</span>
-            </div>
-          </div>
-        </div>
-      `;
+      const popupHtml = tooltipHtml;
 
       marker.bindPopup(popupHtml, {
         closeButton: false,
