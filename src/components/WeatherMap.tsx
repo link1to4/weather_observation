@@ -241,7 +241,9 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
 
       if (!lat || !lng) return;
 
-      const temp = station.realtime?.temperature ?? station.dailyHigh ?? null;
+      const temp = station.realtime 
+        ? station.realtime.temperature 
+        : (station.dailyHigh ?? null);
       const isSelected = station.id === selectedStationId;
       const altitude = station.realtime?.altitude ?? MANNED_STATIONS_ALTITUDE[station.id] ?? null;
 
@@ -265,7 +267,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
           <div class="space-y-1">
             <div class="flex justify-between items-center gap-4">
               <span class="text-zinc-500">觀測氣溫</span>
-              <span class="font-mono font-bold text-amber-400 text-sm">${temp !== null ? `${temp.toFixed(1)}°C` : '--'}</span>
+              <span class="font-mono font-bold text-amber-400 text-sm">${temp !== null ? `${temp.toFixed(1)}°C` : 'NA'}</span>
             </div>
             <div class="flex justify-between items-center gap-4">
               <span class="text-zinc-500">測站海拔</span>

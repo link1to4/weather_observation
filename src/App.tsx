@@ -618,7 +618,7 @@ export default function App() {
                   <span className="text-zinc-300">{item.name}</span>
                 </div>
                 <span className="font-mono font-bold text-amber-300">
-                  {item.value !== null && item.value !== undefined ? `${item.value.toFixed(1)}°C` : '--'}
+                  {item.value !== null && item.value !== undefined ? `${item.value.toFixed(1)}°C` : 'NA'}
                 </span>
               </div>
             ))}
@@ -947,7 +947,7 @@ export default function App() {
                           <div>
                             <span className="text-[9px] text-zinc-500 block leading-tight">目前氣溫</span>
                             <span className="text-xs font-mono font-bold text-amber-300">
-                              {selectedStationData.realtime.temperature !== null ? `${selectedStationData.realtime.temperature.toFixed(1)}°C` : '--'}
+                              {selectedStationData.realtime.temperature !== null ? `${selectedStationData.realtime.temperature.toFixed(1)}°C` : 'NA'}
                             </span>
                           </div>
                         </div>
@@ -997,9 +997,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-amber-300">
-                          {dailyMetrics.high !== null ? `${dailyMetrics.high.toFixed(1)}` : '--'}
+                          {dailyMetrics.high !== null ? `${dailyMetrics.high.toFixed(1)}` : 'NA'}
                         </span>
-                        <span className="text-xs text-amber-400 font-semibold ml-0.5">°C</span>
+                        {dailyMetrics.high !== null && <span className="text-xs text-amber-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日中最高溫度點</span>
                     </div>
@@ -1012,9 +1012,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-sky-300">
-                          {dailyMetrics.low !== null ? `${dailyMetrics.low.toFixed(1)}` : '--'}
+                          {dailyMetrics.low !== null ? `${dailyMetrics.low.toFixed(1)}` : 'NA'}
                         </span>
-                        <span className="text-xs text-sky-400 font-semibold ml-0.5">°C</span>
+                        {dailyMetrics.low !== null && <span className="text-xs text-sky-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日中最低溫度點</span>
                     </div>
@@ -1027,9 +1027,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-teal-300">
-                          {dailyMetrics.mean !== null ? `${dailyMetrics.mean.toFixed(1)}` : '--'}
+                          {dailyMetrics.mean !== null ? `${dailyMetrics.mean.toFixed(1)}` : 'NA'}
                         </span>
-                        <span className="text-xs text-teal-400 font-semibold ml-0.5">°C</span>
+                        {dailyMetrics.mean !== null && <span className="text-xs text-teal-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日平均觀測值</span>
                     </div>
@@ -1286,7 +1286,7 @@ export default function App() {
                                 <div className="mt-2 space-y-1">
                                   <div className="flex justify-between">
                                     <span className="text-zinc-500">溫度</span>
-                                    <span className="font-semibold text-amber-400">{h.temperature !== null ? `${h.temperature}°C` : '--'}</span>
+                                    <span className="font-semibold text-amber-400">{h.temperature !== null ? `${h.temperature}°C` : 'NA'}</span>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-zinc-500">濕度</span>
@@ -1450,7 +1450,7 @@ export default function App() {
                                               return (
                                                 <p key={p.dataKey} className={`${textColor} font-medium flex items-center gap-1.5`}>
                                                   <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`}></span>
-                                                  {labelText}: {p.value !== undefined && p.value !== null ? `${p.value.toFixed(1)}` : '--'} °C
+                                                  {labelText}: {p.value !== undefined && p.value !== null ? `${p.value.toFixed(1)} °C` : 'NA'}
                                                 </p>
                                               );
                                             })}

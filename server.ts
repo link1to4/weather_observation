@@ -315,7 +315,9 @@ async function startServer() {
               const refHum = parseFloat(obs.weatherElements?.RelativeHumidity);
 
               let symTemp = refTemp;
-              if (!isNaN(refTemp)) {
+              if (autoTemp === null) {
+                symTemp = NaN;
+              } else if (!isNaN(refTemp)) {
                 symTemp = parseFloat((refTemp + offset).toFixed(1));
               }
 
@@ -323,14 +325,16 @@ async function startServer() {
               if (autoHum !== null && !isNaN(refHum)) {
                 const humDiff = autoHum - (refRtStation?.WeatherElement?.RelativeHumidity ? parseFloat(refRtStation.WeatherElement.RelativeHumidity) : refHum);
                 symHum = Math.min(100, Math.max(0, Math.round(refHum + (isNaN(humDiff) ? 0 : humDiff))));
+              } else if (autoHum === null) {
+                symHum = NaN;
               }
 
               return {
                 DateTime: obs.DateTime,
                 weatherElements: {
                   ...obs.weatherElements,
-                  AirTemperature: isNaN(symTemp) ? obs.weatherElements.AirTemperature : String(symTemp),
-                  RelativeHumidity: isNaN(symHum) ? obs.weatherElements.RelativeHumidity : String(symHum),
+                  AirTemperature: isNaN(symTemp) ? '-99' : String(symTemp),
+                  RelativeHumidity: isNaN(symHum) ? '-99' : String(symHum),
                   Precipitation: obs.weatherElements.Precipitation
                 }
               };
@@ -341,17 +345,23 @@ async function startServer() {
             const extremeLowStr = rtStation.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature;
 
             const refDailyStats = refManned.stationObsStatistics?.AirTemperature?.daily?.[0];
-            const syntheticDailyHigh = extremeHighStr && extremeHighStr !== '-99' && extremeHighStr !== '-999' && extremeHighStr !== 'X'
-              ? parseFloat(extremeHighStr) 
-              : (refDailyStats?.Maximum ? parseFloat((refDailyStats.Maximum + offset).toFixed(1)) : null);
+            const syntheticDailyHigh = autoTemp === null
+              ? null
+              : (extremeHighStr && extremeHighStr !== '-99' && extremeHighStr !== '-999' && extremeHighStr !== 'X'
+                ? parseFloat(extremeHighStr) 
+                : (refDailyStats?.Maximum ? parseFloat((refDailyStats.Maximum + offset).toFixed(1)) : null));
               
-            const syntheticDailyLow = extremeLowStr && extremeLowStr !== '-99' && extremeLowStr !== '-999' && extremeLowStr !== 'X'
-              ? parseFloat(extremeLowStr) 
-              : (refDailyStats?.Minimum ? parseFloat((refDailyStats.Minimum + offset).toFixed(1)) : null);
+            const syntheticDailyLow = autoTemp === null
+              ? null
+              : (extremeLowStr && extremeLowStr !== '-99' && extremeLowStr !== '-999' && extremeLowStr !== 'X'
+                ? parseFloat(extremeLowStr) 
+                : (refDailyStats?.Minimum ? parseFloat((refDailyStats.Minimum + offset).toFixed(1)) : null));
 
-            const syntheticDailyMean = refDailyStats?.Mean 
-              ? parseFloat((refDailyStats.Mean + offset).toFixed(1)) 
-              : null;
+            const syntheticDailyMean = autoTemp === null
+              ? null
+              : (refDailyStats?.Mean 
+                ? parseFloat((refDailyStats.Mean + offset).toFixed(1)) 
+                : null);
 
             // Build complete virtual station object
             const autoLocation = {
