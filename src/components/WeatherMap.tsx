@@ -116,13 +116,28 @@ const MANNED_STATIONS_ALTITUDE: Record<string, number> = {
 
 function getTemperatureColor(temp: number | null): string {
   if (temp === null) return '#71717a'; // gray-500
-  if (temp < 10) return '#8b5cf6';     // Violet (< 10°C)
-  if (temp < 15) return '#3b82f6';     // Indigo/Blue (10°C ~ 15°C)
-  if (temp < 20) return '#06b6d4';     // Sky/Cyan (15°C ~ 20°C)
-  if (temp < 25) return '#10b981';     // Emerald/Green (20°C ~ 25°C)
-  if (temp < 30) return '#f59e0b';     // Amber/Yellow (25°C ~ 30°C)
-  if (temp < 35) return '#f97316';     // Orange (30°C ~ 35°C)
-  return '#ef4444';                    // Red (>= 35°C)
+  if (temp >= 38) return '#8126c0';      // 紫色 (>= 38°C)
+  if (temp >= 37) return '#9a004c';      // 深桃紅 (37°C ~ 38°C)
+  if (temp >= 35) return '#b30000';      // 深紅 (35°C ~ 37°C)
+  if (temp >= 33) return '#ff0000';      // 鮮紅 (33°C ~ 35°C)
+  if (temp >= 31) return '#ff5500';      // 橘紅 (31°C ~ 33°C)
+  if (temp >= 29) return '#ff8c00';      // 深橘 (29°C ~ 31°C)
+  if (temp >= 27) return '#ffb300';      // 橙黃/淺橘 (27°C ~ 29°C)
+  if (temp >= 25) return '#ffebad';      // 鵝黃/米白 (25°C ~ 27°C)
+  if (temp >= 23) return '#d1f2a5';      // 嫩綠/淺黃綠 (23°C ~ 25°C)
+  if (temp >= 21) return '#9ade73';      // 淺綠 (21°C ~ 23°C)
+  if (temp >= 19) return '#5cd65c';      // 草綠 (19°C ~ 21°C)
+  if (temp >= 17) return '#2eb82e';      // 綠色 (17°C ~ 19°C)
+  if (temp >= 15) return '#1f7a1f';      // 深綠 (15°C ~ 17°C)
+  if (temp >= 13) return '#145214';      // 墨綠 (13°C ~ 15°C)
+  if (temp >= 11) return '#0a290a';      // 極深綠 (11°C ~ 13°C)
+  if (temp >= 9)  return '#ade8f4';      // 粉藍/極淺藍 (9°C ~ 11°C)
+  if (temp >= 7)  return '#48cae4';      // 淺天藍 (7°C ~ 9°C)
+  if (temp >= 5)  return '#0096c7';      // 天藍 (5°C ~ 7°C)
+  if (temp >= 3)  return '#0077b6';      // 藍色 (3°C ~ 5°C)
+  if (temp >= 1)  return '#023e8a';      // 深藍 (1°C ~ 3°C)
+  if (temp >= -1) return '#03045e';      // 暗藍 (-1°C ~ 1°C)
+  return '#120136';                      // 極暗紫藍 (< -1°C)
 }
 
 export default function WeatherMap({ stations, selectedStationId, onSelectStation }: WeatherMapProps) {
@@ -362,7 +377,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   };
 
   return (
-    <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-5 shadow-sm relative overflow-hidden flex flex-col h-full min-h-[550px]">
+    <div className="bg-[#121214] border border-zinc-900 rounded-3xl p-4 sm:p-5 shadow-sm relative overflow-hidden flex flex-col h-full min-h-[360px] sm:min-h-[450px] md:min-h-[550px]">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -414,39 +429,37 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       </div>
 
       {/* Map Element */}
-      <div className="relative flex-1 rounded-2xl border border-zinc-900 overflow-hidden min-h-[450px]">
-        <div ref={mapContainerRef} className="w-full h-full min-h-[450px] z-0 bg-[#09090b]" />
+      <div className="relative flex-1 rounded-2xl border border-zinc-900 overflow-hidden min-h-[250px] sm:min-h-[350px] md:min-h-[450px]">
+        <div ref={mapContainerRef} className="w-full h-full min-h-[250px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
 
         {/* Legend */}
-        <div className="absolute bottom-4 left-4 z-[999] bg-zinc-950/90 backdrop-blur-md border border-zinc-800 px-3.5 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 select-none text-[10px]">
-          <span className="font-bold text-zinc-300 mb-0.5">即時氣溫色階</span>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#ef4444' }} />
-            <span className="text-zinc-400 font-mono">極熱 (&ge; 35°C)</span>
+        <div className="absolute bottom-4 left-4 z-[999] bg-zinc-950/90 backdrop-blur-md border border-zinc-800/80 p-3.5 rounded-2xl shadow-xl flex-col gap-1.5 select-none w-[115px] hidden sm:flex">
+          <div className="text-[10px] font-bold text-zinc-300 border-b border-zinc-800/50 pb-1 mb-1 text-center">
+            溫度分布色階
+            <span className="text-[8px] text-zinc-500 block font-normal mt-0.5">攝氏(°C)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#f97316' }} />
-            <span className="text-zinc-400 font-mono">炎熱 (30°C ~ 35°C)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#f59e0b' }} />
-            <span className="text-zinc-400 font-mono">溫暖 (25°C ~ 30°C)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#10b981' }} />
-            <span className="text-zinc-400 font-mono">舒適 (20°C ~ 25°C)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#06b6d4' }} />
-            <span className="text-zinc-400 font-mono">涼爽 (15°C ~ 20°C)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#3b82f6' }} />
-            <span className="text-zinc-400 font-mono">寒冷 (10°C ~ 15°C)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: '#8b5cf6' }} />
-            <span className="text-zinc-400 font-mono">極冷 (&lt; 10°C)</span>
+          <div className="flex items-stretch h-[220px] justify-center">
+            {/* Gradient vertical strip */}
+            <div 
+              className="w-2.5 rounded-full border border-zinc-800/60 shadow-inner" 
+              style={{ 
+                background: 'linear-gradient(to bottom, #8126c0, #9a004c, #b30000, #ff0000, #ff5500, #ff8c00, #ffb300, #ffebad, #d1f2a5, #9ade73, #5cd65c, #2eb82e, #1f7a1f, #145214, #0a290a, #ade8f4, #48cae4, #0096c7, #0077b6, #023e8a, #03045e, #120136)' 
+              }} 
+            />
+            {/* Numerical Ticks aligned next to the bar */}
+            <div className="flex flex-col justify-between pl-2 text-[9px] font-mono font-bold text-zinc-400 leading-none">
+              <span>38</span>
+              <span>35</span>
+              <span>31</span>
+              <span>27</span>
+              <span>23</span>
+              <span>19</span>
+              <span>15</span>
+              <span>11</span>
+              <span>7</span>
+              <span>3</span>
+              <span>-1</span>
+            </div>
           </div>
         </div>
       </div>
