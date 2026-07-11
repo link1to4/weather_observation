@@ -775,12 +775,24 @@ async function startServer() {
     }
 
     const authorization = process.env.CWA_API_KEY || 'CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D';
-    const idWithoutLast = stationId.slice(0, -1);
-    const url = `https://www.cwa.gov.tw/V8/C/W/Observe/MOD/24hr/${idWithoutLast}.html`;
+    let filename = stationId;
+    if (filename.length === 6 && filename.endsWith('0')) {
+      filename = filename.slice(0, -1);
+    }
+    const url = `https://www.cwa.gov.tw/V8/C/W/Observe/MOD/24hr/${filename}.html`;
 
     try {
-      console.log(`Fetching 24h hourly observation for station ${stationId} (scraped ID: ${idWithoutLast}) from ${url}`);
-      const response = await fetch(url);
+      console.log(`Fetching 24h hourly observation for station ${stationId} (scraped ID: ${filename}) from ${url}`);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Referer': 'https://www.cwa.gov.tw/V8/C/W/Observe/Real.html'
+        }
+      });
       if (!response.ok) {
         throw new Error(`CWA returned status ${response.status}`);
       }
@@ -838,7 +850,7 @@ async function startServer() {
 
       res.json({
         stationId,
-        scrapedId: idWithoutLast,
+        scrapedId: filename,
         data: list
       });
     } catch (e: any) {
@@ -847,7 +859,7 @@ async function startServer() {
         const fallbackList = await fetchHourlyFallback(stationId, authorization);
         res.json({
           stationId,
-          scrapedId: idWithoutLast,
+          scrapedId: filename,
           data: fallbackList,
           source: 'cwa_api_fallback'
         });
