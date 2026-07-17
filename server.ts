@@ -640,91 +640,26 @@ async function startServer() {
 
 
 
-  // API Route for 24-hour observation timeline scraped directly from OBS_Station
+  // API Route for 24-hour observation timeline fetched from custom worker
   app.get('/api/weather/hourly', async (req, res) => {
     const { stationId } = req.query;
     if (!stationId || typeof stationId !== 'string') {
       return res.status(400).json({ error: 'stationId parameter is required' });
     }
 
-    const filename = stationId.slice(0, -1);
-    const url = `https://www.cwa.gov.tw/V8/C/W/Observe/MOD/24hr/${filename}.html`;
+    const url = `https://cwa.link1to4.workers.dev/api/weather/hourly?stationId=${stationId}`;
 
     try {
-      console.log(`Fetching 24h hourly observation for station ${stationId} (scraped ID: ${filename}) from ${url}`);
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-          'Referer': 'https://www.cwa.gov.tw/V8/C/W/Observe/Real.html'
-        }
-      });
+      console.log(`Fetching 24h hourly observation for station ${stationId} from custom worker: ${url}`);
+      const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`CWA returned status ${response.status}`);
+        throw new Error(`Worker API returned status ${response.status}`);
       }
-      const html = await response.text();
-
-      const $ = cheerio.load('<table><tbody>' + html + '</tbody></table>');
-      const list: any[] = [];
-
-      $('tr').each((_, tr) => {
-        const headersMap: Record<string, string> = {};
-        $(tr).find('td, th').each((__, cell) => {
-          const h = $(cell).attr('headers');
-          const text = $(cell).find('span.is-active').length > 0 
-            ? $(cell).find('span.is-active').text().trim() 
-            : $(cell).text().trim();
-          headersMap[h || 'time'] = text.replace(/\s+/g, ' ');
-        });
-
-        const timeStr = headersMap['time'] || '';
-        const tempStr = headersMap['temp'] || '';
-        const humStr = headersMap['hum'] || '';
-        const rainStr = headersMap['rain'] || '';
-
-        const temperature = tempStr && tempStr !== '-' && tempStr !== '無觀測' ? parseFloat(tempStr) : null;
-        const humidity = humStr && humStr !== '-' && humStr !== '無觀測' ? parseFloat(humStr) : null;
-        const precipitation = rainStr && rainStr !== '-' && rainStr !== '無觀測' ? parseFloat(rainStr) : null;
-
-        let dateTimeStr = '';
-        try {
-          const currentYear = new Date().getFullYear();
-          const match = timeStr.match(/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
-          if (match) {
-            const [_, month, day, hours, minutes] = match;
-            dateTimeStr = `${currentYear}-${month}-${day}T${hours}:${minutes}:00`;
-          } else {
-            dateTimeStr = new Date().toISOString();
-          }
-        } catch (e) {
-          dateTimeStr = new Date().toISOString();
-        }
-
-        if (timeStr) {
-          list.push({
-            time: timeStr,
-            dateTime: dateTimeStr,
-            temperature,
-            humidity,
-            precipitation
-          });
-        }
-      });
-
-      // Reverse so it's chronologically ascending (past to present)
-      list.reverse();
-
-      res.json({
-        stationId,
-        scrapedId: filename,
-        data: list
-      });
+      const data = await response.json();
+      res.json(data);
     } catch (e: any) {
-      console.error(`Scraping hourly weather failed or blocked for station ${stationId}: ${e.message}`);
-      res.status(500).json({ error: `即時觀測資料取得失敗或已被阻擋: ${e.message}` });
+      console.error(`Fetching hourly weather from worker failed for station ${stationId}: ${e.message}`);
+      res.status(500).json({ error: `即時觀測資料取得失敗: ${e.message}` });
     }
   });
 
