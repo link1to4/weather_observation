@@ -647,10 +647,7 @@ async function startServer() {
       return res.status(400).json({ error: 'stationId parameter is required' });
     }
 
-    let filename = stationId;
-    if (filename.length === 6 && filename.endsWith('0')) {
-      filename = filename.slice(0, -1);
-    }
+    const filename = stationId.slice(0, -1);
     const url = `https://www.cwa.gov.tw/V8/C/W/Observe/MOD/24hr/${filename}.html`;
 
     try {
