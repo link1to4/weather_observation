@@ -149,6 +149,10 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   // Track manual selections to prevent zoom loops
   const lastSelectedIdRef = useRef<string>('');
 
+  const [locating, setLocating] = useState<boolean>(false);
+  const [locateStatus, setLocateStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+
   // 1. Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -234,6 +238,32 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
 
     markersGroup.clearLayers();
 
+    // Render user location marker if available
+    if (userLocation) {
+      const userMarker = L.circleMarker(userLocation, {
+        radius: 9,
+        fillColor: '#3b82f6', // Bright blue for user position
+        fillOpacity: 0.95,
+        color: '#ffffff',
+        weight: 2.5,
+      });
+
+      const userTooltipHtml = `
+        <div class="px-2.5 py-1.5 text-xs text-zinc-100 bg-blue-950/95 border border-blue-800 rounded-xl shadow-lg select-none font-sans font-semibold">
+          📍 您的目前位置
+        </div>
+      `;
+
+      userMarker.bindTooltip(userTooltipHtml, {
+        permanent: false,
+        direction: 'top',
+        opacity: 0.98,
+        offset: [0, -6],
+      });
+
+      markersGroup.addLayer(userMarker);
+    }
+
     stations.forEach((station) => {
       // Resolve coordinates
       const lat = station.realtime?.latitude ?? FALLBACK_COORDINATES[station.id]?.[0];
@@ -300,7 +330,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
 
       markersGroup.addLayer(marker);
     });
-  }, [stations, selectedStationId, mapStyle]);
+  }, [stations, selectedStationId, mapStyle, userLocation]);
 
   // 4. Smooth Panning on Station Change
   useEffect(() => {
@@ -332,6 +362,80 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       }
     }
   }, [selectedStationId, stations]);
+
+  // Handle locating user's position and selecting nearest weather station
+  const handleLocateNearest = () => {
+    if (!navigator.geolocation) {
+      setLocateStatus({ type: 'error', text: '您的瀏覽器不支援定位功能' });
+      setTimeout(() => setLocateStatus(null), 3500);
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation([latitude, longitude]);
+
+        if (stations.length === 0) {
+          setLocating(false);
+          setLocateStatus({ type: 'error', text: '目前無可用的測站資料' });
+          setTimeout(() => setLocateStatus(null), 3500);
+          return;
+        }
+
+        let nearestStation = stations[0];
+        let minDistance = Infinity;
+
+        stations.forEach((station) => {
+          const lat = station.realtime?.latitude ?? FALLBACK_COORDINATES[station.id]?.[0];
+          const lng = station.realtime?.longitude ?? FALLBACK_COORDINATES[station.id]?.[1];
+
+          if (lat && lng) {
+            // Euclidean distance squared
+            const dist = Math.pow(latitude - lat, 2) + Math.pow(longitude - lng, 2);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestStation = station;
+            }
+          }
+        });
+
+        // Select the nearest station
+        onSelectStation(nearestStation.id);
+
+        // Center on the user's location
+        if (mapRef.current) {
+          mapRef.current.setView([latitude, longitude], 11, {
+            animate: true,
+            duration: 1.2,
+          });
+        }
+
+        setLocateStatus({ 
+          type: 'success', 
+          text: `定位成功！最近測站：${nearestStation.name}` 
+        });
+        setLocating(false);
+        setTimeout(() => setLocateStatus(null), 4000);
+      },
+      (error) => {
+        console.error(error);
+        let errorMsg = '定位失敗，請確認是否開啟定位權限';
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMsg = '定位失敗：使用者拒絕定位請求';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMsg = '定位失敗：無法取得位置資訊';
+        } else if (error.code === error.TIMEOUT) {
+          errorMsg = '定位失敗：定位請求超時';
+        }
+        setLocateStatus({ type: 'error', text: errorMsg });
+        setLocating(false);
+        setTimeout(() => setLocateStatus(null), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+    );
+  };
 
   // Handle map centering to Taiwan
   const handleRecenter = () => {
@@ -387,6 +491,15 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
           </div>
 
           <button
+            onClick={handleLocateNearest}
+            disabled={locating}
+            className="px-3 py-1.5 text-[11px] font-bold text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-850 active:bg-zinc-800 transition-all cursor-pointer shadow-sm flex items-center gap-1.5 disabled:opacity-60"
+          >
+            <MapPin className={`h-3.5 w-3.5 ${locating ? 'animate-bounce text-amber-400' : 'text-zinc-400'}`} />
+            {locating ? '定位中...' : '定位最近測站'}
+          </button>
+
+          <button
             onClick={handleRecenter}
             className="px-3 py-1.5 text-[11px] font-bold text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-850 active:bg-zinc-800 transition-all cursor-pointer shadow-sm"
           >
@@ -398,6 +511,17 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       {/* Map Element */}
       <div className="relative flex-1 rounded-xl sm:rounded-2xl border border-zinc-900 overflow-hidden min-h-[200px] sm:min-h-[350px] md:min-h-[450px]">
         <div ref={mapContainerRef} className="w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
+
+        {/* Toast Status Notifications */}
+        {locateStatus && (
+          <div className={`absolute top-4 right-4 z-[999] px-3.5 py-2.5 rounded-xl text-xs font-semibold shadow-2xl backdrop-blur-md transition-all border animate-fade-in ${
+            locateStatus.type === 'success' 
+              ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-300' 
+              : 'bg-rose-950/90 border-rose-500/30 text-rose-300'
+          }`}>
+            {locateStatus.text}
+          </div>
+        )}
 
         {/* Legend */}
         <div className="absolute bottom-4 left-4 z-[999] bg-zinc-950/90 backdrop-blur-md border border-zinc-800/80 p-3.5 rounded-2xl shadow-xl flex-col gap-1.5 select-none w-[115px] hidden sm:flex">

@@ -1,6 +1,6 @@
 {
   "name": "Taiwan Weather Dashboard",
   "description": "An interactive weather dashboard fetching real-time and daily statistical observations from Taiwan Central Weather Administration (CWA), presenting a detailed daily high temperature line chart and comparisons across different meteorological stations.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
