@@ -262,7 +262,14 @@ export default function App() {
     try {
       const response = await fetch(`/api/weather/hourly?stationId=${stationId}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch hourly data: ${response.statusText}`);
+        let errMsg = `Failed to fetch hourly data: ${response.statusText}`;
+        try {
+          const errJson = await response.json();
+          if (errJson && errJson.error) {
+            errMsg = errJson.error;
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
       }
       const json = await response.json();
       setHourlyData(prev => ({
