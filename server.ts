@@ -638,134 +638,7 @@ async function startServer() {
     }
   });
 
-  // Fallback helper to fetch and build hourly data using official CWA API
-  async function fetchHourlyFallback(stationId: string, authorization: string): Promise<any[]> {
-    const isAuto = stationId.startsWith('C') || stationId.startsWith('A') || isNaN(Number(stationId));
-    
-    let targetStationId = stationId;
-    let offsetTemp = 0.0;
-    let offsetHum = 0.0;
-    let autoTemp: number | null = null;
-    let autoHum: number | null = null;
-    
-    if (isAuto) {
-      // 1. Fetch the automatic station details to get coordinates and current temp/humidity
-      const autoUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0001-001?Authorization=${authorization}&format=JSON&StationId=${stationId}`;
-      const autoRes = await fetch(autoUrl);
-      if (autoRes.ok) {
-        const autoData = await autoRes.json();
-        const rtStation = autoData?.records?.Station?.[0];
-        if (rtStation) {
-          // Extract coordinates
-          const coords = rtStation.GeoInfo?.Coordinates;
-          let latitude: number | null = null;
-          let longitude: number | null = null;
-          if (Array.isArray(coords)) {
-            const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
-            if (wgs84) {
-              latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
-              longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
-            } else if (coords.length > 0) {
-              latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
-              longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
-            }
-          }
-          
-          if (latitude !== null && longitude !== null) {
-            targetStationId = findNearestMannedStation(latitude, longitude);
-            
-            // Get current values
-            const autoTempStr = rtStation.WeatherElement?.AirTemperature;
-            const autoHumStr = rtStation.WeatherElement?.RelativeHumidity;
-            autoTemp = autoTempStr && autoTempStr !== '-99' && autoTempStr !== '-999' && autoTempStr !== 'X' ? parseFloat(autoTempStr) : null;
-            autoHum = autoHumStr && autoHumStr !== '-99' && autoHumStr !== '-999' && autoHumStr !== 'X' ? parseFloat(autoHumStr) : null;
-            
-            // Fetch nearest manned station real-time value to compute dynamic offset
-            const refUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/O-A0003-001?Authorization=${authorization}&format=JSON&StationId=${targetStationId}`;
-            const refRes = await fetch(refUrl).catch(() => null);
-            if (refRes && refRes.ok) {
-              const refData = await refRes.json();
-              const refStation = refData?.records?.Station?.[0];
-              const refTempStr = refStation?.WeatherElement?.AirTemperature;
-              const refHumStr = refStation?.WeatherElement?.RelativeHumidity;
-              const refTemp = refTempStr && refTempStr !== '-99' && refTempStr !== '-999' && refTempStr !== 'X' ? parseFloat(refTempStr) : null;
-              const refHum = refHumStr && refHumStr !== '-99' && refHumStr !== '-999' && refHumStr !== 'X' ? parseFloat(refHumStr) : null;
-              
-              if (autoTemp !== null && refTemp !== null) {
-                offsetTemp = autoTemp - refTemp;
-              } else {
-                offsetTemp = stationId.startsWith('C0HA') ? -4.5 : -1.5;
-              }
-              
-              if (autoHum !== null && refHum !== null) {
-                offsetHum = autoHum - refHum;
-              }
-            } else {
-              offsetTemp = stationId.startsWith('C0HA') ? -4.5 : -1.5;
-            }
-          }
-        }
-      }
-    }
-    
-    // 2. Fetch manned station 24-hour climate data
-    const historicalUrl = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/C-B0024-001?Authorization=${authorization}&format=JSON&StationID=${targetStationId}`;
-    const histRes = await fetch(historicalUrl);
-    if (!histRes.ok) {
-      throw new Error(`Fallback CWA API returned status ${histRes.status}`);
-    }
-    
-    const histData = await histRes.json();
-    const locationData = histData?.records?.location?.find((loc: any) => loc.station?.StationID === targetStationId);
-    if (!locationData) {
-      throw new Error(`No fallback location data found for ref station ${targetStationId}`);
-    }
-    
-    const refObsTimes = locationData.stationObsTimes?.stationObsTime || [];
-    const list = refObsTimes.map((obs: any) => {
-      const refTemp = parseFloat(obs.weatherElements?.AirTemperature);
-      const refHum = parseFloat(obs.weatherElements?.RelativeHumidity);
-      const refPrecip = parseFloat(obs.weatherElements?.Precipitation);
-      
-      let symTemp = refTemp;
-      if (isAuto && autoTemp === null) {
-        symTemp = NaN;
-      } else if (!isNaN(refTemp)) {
-        symTemp = parseFloat((refTemp + offsetTemp).toFixed(1));
-      }
-      
-      let symHum = refHum;
-      if (isAuto && autoHum !== null && !isNaN(refHum)) {
-        symHum = Math.min(100, Math.max(0, Math.round(refHum + offsetHum)));
-      } else if (isAuto && autoHum === null) {
-        symHum = NaN;
-      }
-      
-      // Format DateTime to "MM/DD HH:mm"
-      const dateTimeStr = obs.DateTime || '';
-      let timeStr = '';
-      try {
-        const d = new Date(dateTimeStr);
-        if (!isNaN(d.getTime())) {
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          const hours = String(d.getHours()).padStart(2, '0');
-          const minutes = String(d.getMinutes()).padStart(2, '0');
-          timeStr = `${month}/${day} ${hours}:${minutes}`;
-        }
-      } catch (e) {}
-      
-      return {
-        time: timeStr || dateTimeStr,
-        dateTime: dateTimeStr,
-        temperature: isNaN(symTemp) ? null : symTemp,
-        humidity: isNaN(symHum) ? null : symHum,
-        precipitation: isNaN(refPrecip) ? 0.0 : refPrecip
-      };
-    });
-    
-    return list;
-  }
+
 
   // API Route for 24-hour observation timeline scraped directly from OBS_Station
   app.get('/api/weather/hourly', async (req, res) => {
@@ -774,7 +647,6 @@ async function startServer() {
       return res.status(400).json({ error: 'stationId parameter is required' });
     }
 
-    const authorization = process.env.CWA_API_KEY || 'CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D';
     let filename = stationId;
     if (filename.length === 6 && filename.endsWith('0')) {
       filename = filename.slice(0, -1);
@@ -854,19 +726,8 @@ async function startServer() {
         data: list
       });
     } catch (e: any) {
-      console.warn(`Scraping hourly weather failed for ${stationId}: ${e.message}. Falling back to official CWA API...`);
-      try {
-        const fallbackList = await fetchHourlyFallback(stationId, authorization);
-        res.json({
-          stationId,
-          scrapedId: filename,
-          data: fallbackList,
-          source: 'cwa_api_fallback'
-        });
-      } catch (fallbackError: any) {
-        console.error(`Error in fallback hourly weather for station ${stationId}:`, fallbackError);
-        res.status(500).json({ error: fallbackError.message || 'Failed to fetch hourly weather from all sources' });
-      }
+      console.error(`Scraping hourly weather failed or blocked for station ${stationId}: ${e.message}`);
+      res.status(500).json({ error: `即時觀測資料取得失敗或已被阻擋: ${e.message}` });
     }
   });
 
