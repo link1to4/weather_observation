@@ -491,15 +491,6 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
           </div>
 
           <button
-            onClick={handleLocateNearest}
-            disabled={locating}
-            className="px-3 py-1.5 text-[11px] font-bold text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-850 active:bg-zinc-800 transition-all cursor-pointer shadow-sm flex items-center gap-1.5 disabled:opacity-60"
-          >
-            <MapPin className={`h-3.5 w-3.5 ${locating ? 'animate-bounce text-amber-400' : 'text-zinc-400'}`} />
-            {locating ? '定位中...' : '定位最近測站'}
-          </button>
-
-          <button
             onClick={handleRecenter}
             className="px-3 py-1.5 text-[11px] font-bold text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-850 active:bg-zinc-800 transition-all cursor-pointer shadow-sm"
           >
@@ -511,6 +502,18 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       {/* Map Element */}
       <div className="relative flex-1 rounded-xl sm:rounded-2xl border border-zinc-900 overflow-hidden min-h-[200px] sm:min-h-[350px] md:min-h-[450px]">
         <div ref={mapContainerRef} className="w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
+
+        {/* Custom Locate Control Button placed right below Leaflet's default Zoom Control (top-left) */}
+        <div className="absolute top-[82px] left-[10px] z-[999]">
+          <button
+            onClick={handleLocateNearest}
+            disabled={locating}
+            title="定位到目前位置的最近測站"
+            className="w-[30px] h-[30px] bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 rounded-md shadow-md flex items-center justify-center cursor-pointer transition-colors disabled:opacity-60"
+          >
+            <MapPin className={`h-4 w-4 ${locating ? 'animate-bounce text-amber-400' : ''}`} />
+          </button>
+        </div>
 
         {/* Toast Status Notifications */}
         {locateStatus && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -178,6 +178,13 @@ export default function App() {
   const [monthlyError, setMonthlyError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'hourly' | 'monthly'>('hourly');
   const [monthlyDisplayType, setMonthlyDisplayType] = useState<'all' | 'high' | 'mean' | 'low'>('all');
+  const [countdown, setCountdown] = useState<number>(1800); // 30 minutes in seconds
+
+  // Keep a ref of comparedStationIds to avoid closure stale state
+  const comparedStationIdsRef = useRef(comparedStationIds);
+  useEffect(() => {
+    comparedStationIdsRef.current = comparedStationIds;
+  }, [comparedStationIds]);
 
   // AI Climate analysis states
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
@@ -333,6 +340,24 @@ export default function App() {
     fetchData();
   }, []);
 
+  // Background auto-refresh timer (30 minutes)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // Perform background refresh silently
+          fetchData(true);
+          comparedStationIdsRef.current.forEach((id) => {
+            fetchHourlyDataForComparison(id);
+          });
+          return 1800; // Reset to 30 minutes
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Fetch monthly data and reset AI report whenever selected station changes
   useEffect(() => {
     if (selectedStationId) {
@@ -362,6 +387,7 @@ export default function App() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
+    setCountdown(1800); // Reset background countdown
     fetchData(true);
     if (selectedStationId) {
       fetchHourlyData(selectedStationId);
@@ -650,9 +676,9 @@ export default function App() {
                 Meteorological Data Service
               </div>
               <h1 className="text-sm sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
-                臺灣氣象局屬觀測日報
+                Taiwan Weather Dashboard
                 <span className="text-[8px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0 hidden sm:inline-block">
-                  C-B0024-001
+                  CWA 觀測日報
                 </span>
               </h1>
               <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 hidden md:block">
@@ -670,6 +696,15 @@ export default function App() {
                 ) : (
                   dailyMetrics.date ? `${dailyMetrics.date} (昨日完整日報)` : '載入中...'
                 )}
+              </span>
+            </div>
+
+            {/* 30分鐘背景自動整理倒數 */}
+            <div className="text-right hidden md:block border-l border-zinc-850 pl-3">
+              <span className="text-[10px] text-zinc-500 block">背景自動更新 (30分)</span>
+              <span className="text-xs font-mono font-medium text-amber-400 flex items-center gap-1 justify-end">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                {Math.floor(countdown / 60)}分{String(countdown % 60).padStart(2, '0')}秒
               </span>
             </div>
             <button
