@@ -186,6 +186,12 @@ export default function App() {
     comparedStationIdsRef.current = comparedStationIds;
   }, [comparedStationIds]);
 
+  // Keep a ref of selectedStationId to avoid closure stale state
+  const selectedStationIdRef = useRef(selectedStationId);
+  useEffect(() => {
+    selectedStationIdRef.current = selectedStationId;
+  }, [selectedStationId]);
+
   // AI Climate analysis states
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
@@ -196,7 +202,7 @@ export default function App() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/weather');
+      const response = await fetch(`/api/weather?_t=${Date.now()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch weather data: ${response.statusText}`);
       }
@@ -208,7 +214,8 @@ export default function App() {
       
       // If our selected station isn't in the response, pick the first available one
       const stations = json.records.location;
-      const found = stations.find((loc) => loc.station.StationID === selectedStationId);
+      const currentSelectedId = selectedStationIdRef.current;
+      const found = stations.find((loc) => loc.station.StationID === currentSelectedId);
       if (!found && stations.length > 0) {
         setSelectedStationId(stations[0].station.StationID);
       }
@@ -226,7 +233,7 @@ export default function App() {
     setMonthlyLoading(true);
     setMonthlyError(null);
     try {
-      const response = await fetch(`/api/weather/monthly?stationId=${stationId}`);
+      const response = await fetch(`/api/weather/monthly?stationId=${stationId}&_t=${Date.now()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch monthly data: ${response.statusText}`);
       }
@@ -249,7 +256,7 @@ export default function App() {
   // Dedicated helper to fetch comparison monthly data silently
   const fetchMonthlyDataForComparison = async (stationId: string) => {
     try {
-      const response = await fetch(`/api/weather/monthly?stationId=${stationId}`);
+      const response = await fetch(`/api/weather/monthly?stationId=${stationId}&_t=${Date.now()}`);
       if (response.ok) {
         const json = await response.json();
         setComparedMonthlyData(prev => ({
@@ -267,7 +274,7 @@ export default function App() {
     setHourlyLoading(true);
     setHourlyError(null);
     try {
-      const response = await fetch(`/api/weather/hourly?stationId=${stationId}`);
+      const response = await fetch(`/api/weather/hourly?stationId=${stationId}&_t=${Date.now()}`);
       if (!response.ok) {
         let errMsg = `Failed to fetch hourly data: ${response.statusText}`;
         try {
@@ -294,7 +301,7 @@ export default function App() {
   // Helper to fetch comparison hourly data silently
   const fetchHourlyDataForComparison = async (stationId: string) => {
     try {
-      const response = await fetch(`/api/weather/hourly?stationId=${stationId}`);
+      const response = await fetch(`/api/weather/hourly?stationId=${stationId}&_t=${Date.now()}`);
       if (response.ok) {
         const json = await response.json();
         setHourlyData(prev => ({
@@ -336,6 +343,19 @@ export default function App() {
     }
   };
 
+  // Refs for callbacks to prevent stale closures in setInterval
+  const fetchDataRef = useRef(fetchData);
+  const fetchHourlyDataRef = useRef(fetchHourlyData);
+  const fetchMonthlyDataRef = useRef(fetchMonthlyData);
+  const fetchHourlyDataForComparisonRef = useRef(fetchHourlyDataForComparison);
+
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+    fetchHourlyDataRef.current = fetchHourlyData;
+    fetchMonthlyDataRef.current = fetchMonthlyData;
+    fetchHourlyDataForComparisonRef.current = fetchHourlyDataForComparison;
+  });
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -346,9 +366,16 @@ export default function App() {
       setCountdown((prev) => {
         if (prev <= 1) {
           // Perform background refresh silently
-          fetchData(true);
+          fetchDataRef.current(true);
+          const currentId = selectedStationIdRef.current;
+          if (currentId) {
+            fetchHourlyDataRef.current(currentId);
+            fetchMonthlyDataRef.current(currentId);
+          }
           comparedStationIdsRef.current.forEach((id) => {
-            fetchHourlyDataForComparison(id);
+            if (id !== currentId) {
+              fetchHourlyDataForComparisonRef.current(id);
+            }
           });
           return 1800; // Reset to 30 minutes
         }
