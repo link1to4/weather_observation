@@ -179,6 +179,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'hourly' | 'monthly'>('hourly');
   const [monthlyDisplayType, setMonthlyDisplayType] = useState<'all' | 'high' | 'mean' | 'low'>('all');
   const [countdown, setCountdown] = useState<number>(1800); // 30 minutes in seconds
+  const targetTimeRef = useRef<number>(Date.now() + 1800 * 1000);
 
   // Keep a ref of comparedStationIds to avoid closure stale state
   const comparedStationIdsRef = useRef(comparedStationIds);
@@ -362,27 +363,47 @@ export default function App() {
 
   // Background auto-refresh timer (30 minutes)
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          // Perform background refresh silently
-          fetchDataRef.current(true);
-          const currentId = selectedStationIdRef.current;
-          if (currentId) {
-            fetchHourlyDataRef.current(currentId);
-            fetchMonthlyDataRef.current(currentId);
-          }
-          comparedStationIdsRef.current.forEach((id) => {
-            if (id !== currentId) {
-              fetchHourlyDataForComparisonRef.current(id);
-            }
-          });
-          return 1800; // Reset to 30 minutes
+    const syncCountdownAndRefresh = () => {
+      const now = Date.now();
+      const diff = targetTimeRef.current - now;
+      if (diff <= 0) {
+        // Perform background refresh silently
+        fetchDataRef.current(true);
+        const currentId = selectedStationIdRef.current;
+        if (currentId) {
+          fetchHourlyDataRef.current(currentId);
+          fetchMonthlyDataRef.current(currentId);
         }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
+        comparedStationIdsRef.current.forEach((id) => {
+          if (id !== currentId) {
+            fetchHourlyDataForComparisonRef.current(id);
+          }
+        });
+        // Reset target time to 30 minutes from now
+        targetTimeRef.current = Date.now() + 1800 * 1000;
+        setCountdown(1800);
+      } else {
+        setCountdown(Math.ceil(diff / 1000));
+      }
+    };
+
+    // Run once at mounting to sync initial target
+    syncCountdownAndRefresh();
+
+    const timer = setInterval(syncCountdownAndRefresh, 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncCountdownAndRefresh();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Fetch monthly data and reset AI report whenever selected station changes
@@ -414,7 +435,8 @@ export default function App() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setCountdown(1800); // Reset background countdown
+    targetTimeRef.current = Date.now() + 1800 * 1000; // Reset background countdown target
+    setCountdown(1800); // Reset background countdown state
     fetchData(true);
     if (selectedStationId) {
       fetchHourlyData(selectedStationId);
