@@ -140,6 +140,13 @@ const formatRealtimeObsTime = (obsTime: string | undefined | null) => {
   return obsTime;
 };
 
+// Safe helper to parse weather numbers from API responses
+const parseWeatherNumber = (val: any): number | null => {
+  if (val === null || val === undefined || val === '' || val === '-99' || val === '-999' || val === 'X') return null;
+  const n = typeof val === 'number' ? val : parseFloat(String(val));
+  return isNaN(n) ? null : n;
+};
+
 export default function App() {
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -193,6 +200,10 @@ export default function App() {
     selectedStationIdRef.current = selectedStationId;
   }, [selectedStationId]);
 
+  // In-flight fetch tracking to prevent infinite loops and duplicate network requests
+  const inFlightMonthlyRef = useRef<Set<string>>(new Set());
+  const inFlightHourlyRef = useRef<Set<string>>(new Set());
+
   // AI Climate analysis states
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
@@ -236,19 +247,26 @@ export default function App() {
     try {
       const response = await fetch(`/api/weather/monthly?stationId=${stationId}&_t=${Date.now()}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch monthly data: ${response.statusText}`);
+        let msg = `無法取得該測站之月報歷史氣溫數據 (${response.status})`;
+        try {
+          const errData = await response.json();
+          if (errData?.error) msg = errData.error;
+        } catch (_) {}
+        throw new Error(msg);
       }
       const json = await response.json();
-      setMonthlyData(json.data || []);
+      const list = Array.isArray(json.data) ? json.data : [];
+      setMonthlyData(list);
       
       // Store in comparison cache too
       setComparedMonthlyData(prev => ({
         ...prev,
-        [stationId]: json.data || []
+        [stationId]: list
       }));
     } catch (err: any) {
       console.error(err);
       setMonthlyError(err.message || '無法取得該測站之月報歷史氣溫數據');
+      setMonthlyData([]);
     } finally {
       setMonthlyLoading(false);
     }
@@ -256,17 +274,30 @@ export default function App() {
 
   // Dedicated helper to fetch comparison monthly data silently
   const fetchMonthlyDataForComparison = async (stationId: string) => {
+    if (inFlightMonthlyRef.current.has(stationId)) return;
+    inFlightMonthlyRef.current.add(stationId);
     try {
       const response = await fetch(`/api/weather/monthly?stationId=${stationId}&_t=${Date.now()}`);
       if (response.ok) {
         const json = await response.json();
         setComparedMonthlyData(prev => ({
           ...prev,
-          [stationId]: json.data || []
+          [stationId]: Array.isArray(json.data) ? json.data : []
+        }));
+      } else {
+        setComparedMonthlyData(prev => ({
+          ...prev,
+          [stationId]: []
         }));
       }
     } catch (err) {
       console.error(`Failed to fetch comparison monthly data for ${stationId}`, err);
+      setComparedMonthlyData(prev => ({
+        ...prev,
+        [stationId]: []
+      }));
+    } finally {
+      inFlightMonthlyRef.current.delete(stationId);
     }
   };
 
@@ -277,7 +308,7 @@ export default function App() {
     try {
       const response = await fetch(`/api/weather/hourly?stationId=${stationId}&_t=${Date.now()}`);
       if (!response.ok) {
-        let errMsg = `Failed to fetch hourly data: ${response.statusText}`;
+        let errMsg = `無法取得該測站之24小時變化數據 (${response.status})`;
         try {
           const errJson = await response.json();
           if (errJson && errJson.error) {
@@ -289,11 +320,15 @@ export default function App() {
       const json = await response.json();
       setHourlyData(prev => ({
         ...prev,
-        [stationId]: json.data || []
+        [stationId]: Array.isArray(json) ? json : []
       }));
     } catch (err: any) {
       console.error(err);
       setHourlyError(err.message || '無法取得該測站之24小時變化數據');
+      setHourlyData(prev => ({
+        ...prev,
+        [stationId]: []
+      }));
     } finally {
       setHourlyLoading(false);
     }
@@ -301,17 +336,30 @@ export default function App() {
 
   // Helper to fetch comparison hourly data silently
   const fetchHourlyDataForComparison = async (stationId: string) => {
+    if (inFlightHourlyRef.current.has(stationId)) return;
+    inFlightHourlyRef.current.add(stationId);
     try {
       const response = await fetch(`/api/weather/hourly?stationId=${stationId}&_t=${Date.now()}`);
       if (response.ok) {
         const json = await response.json();
         setHourlyData(prev => ({
           ...prev,
-          [stationId]: json.data || []
+          [stationId]: Array.isArray(json) ? json : []
+        }));
+      } else {
+        setHourlyData(prev => ({
+          ...prev,
+          [stationId]: []
         }));
       }
     } catch (err) {
       console.error(`Failed to fetch comparison hourly data for ${stationId}`, err);
+      setHourlyData(prev => ({
+        ...prev,
+        [stationId]: []
+      }));
+    } finally {
+      inFlightHourlyRef.current.delete(stationId);
     }
   };
 
@@ -421,13 +469,13 @@ export default function App() {
     }
   }, [selectedStationId]);
 
-  // Fetch comparison monthly data whenever a new station is checked
+  // Fetch comparison monthly and hourly data whenever a new station is added to comparison
   useEffect(() => {
     comparedStationIds.forEach(id => {
-      if (!comparedMonthlyData[id]) {
+      if (comparedMonthlyData[id] === undefined) {
         fetchMonthlyDataForComparison(id);
       }
-      if (!hourlyData[id]) {
+      if (hourlyData[id] === undefined) {
         fetchHourlyDataForComparison(id);
       }
     });
@@ -497,9 +545,9 @@ export default function App() {
       
       // Get daily high
       const dailyTemps = loc.stationObsStatistics?.AirTemperature?.daily?.[0];
-      const dailyHigh = dailyTemps?.Maximum ?? null;
-      const dailyLow = dailyTemps?.Minimum ?? null;
-      const dailyMean = dailyTemps?.Mean ?? null;
+      const dailyHigh = parseWeatherNumber(dailyTemps?.Maximum);
+      const dailyLow = parseWeatherNumber(dailyTemps?.Minimum);
+      const dailyMean = parseWeatherNumber(dailyTemps?.Mean);
 
       return {
         id: stationId,
@@ -623,18 +671,18 @@ export default function App() {
     }
     const d = selectedStationData.stationObsStatistics.AirTemperature.daily[0];
     return {
-      high: d.Maximum,
-      low: d.Minimum,
-      mean: d.Mean,
-      date: d.Date,
+      high: parseWeatherNumber(d.Maximum),
+      low: parseWeatherNumber(d.Minimum),
+      mean: parseWeatherNumber(d.Mean),
+      date: d.Date || '',
     };
   }, [selectedStationData]);
 
   // Calculate stats across all of Taiwan
   const taiwanStats = useMemo(() => {
     if (stationsList.length === 0) return null;
-    const highs = stationsList.map((st) => st.dailyHigh).filter((v): v is number => v !== null);
-    const lows = stationsList.map((st) => st.dailyLow).filter((v): v is number => v !== null);
+    const highs = stationsList.map((st) => st.dailyHigh).filter((v): v is number => v !== null && !isNaN(v));
+    const lows = stationsList.map((st) => st.dailyLow).filter((v): v is number => v !== null && !isNaN(v));
     
     if (highs.length === 0) return null;
 
@@ -700,7 +748,7 @@ export default function App() {
                   <span className="text-zinc-300">{item.name}</span>
                 </div>
                 <span className="font-mono font-bold text-amber-300">
-                  {item.value !== null && item.value !== undefined ? `${item.value.toFixed(1)}°C` : 'NA'}
+                  {item.value !== null && item.value !== undefined && !isNaN(Number(item.value)) ? `${Number(item.value).toFixed(1)}°C` : 'NA'}
                 </span>
               </div>
             ))}
@@ -1038,7 +1086,9 @@ export default function App() {
                           <div>
                             <span className="text-[9px] text-zinc-500 block leading-tight">目前氣溫</span>
                             <span className="text-xs font-mono font-bold text-amber-300">
-                              {selectedStationData.realtime.temperature !== null ? `${selectedStationData.realtime.temperature.toFixed(1)}°C` : 'NA'}
+                              {selectedStationData.realtime.temperature !== null && !isNaN(Number(selectedStationData.realtime.temperature))
+                                ? `${Number(selectedStationData.realtime.temperature).toFixed(1)}°C`
+                                : 'NA'}
                             </span>
                           </div>
                         </div>
@@ -1058,18 +1108,20 @@ export default function App() {
                           <div>
                             <span className="text-[9px] text-zinc-500 block leading-tight">本日雨量</span>
                             <span className="text-xs font-mono font-bold text-teal-300">
-                              {selectedStationData.realtime.precipitation !== null ? `${selectedStationData.realtime.precipitation.toFixed(1)} mm` : '0.0 mm'}
+                              {selectedStationData.realtime.precipitation !== null && !isNaN(Number(selectedStationData.realtime.precipitation))
+                                ? `${Number(selectedStationData.realtime.precipitation).toFixed(1)} mm`
+                                : '0.0 mm'}
                             </span>
                           </div>
                         </div>
 
-                        {selectedStationData.realtime.todayHigh !== null && (
+                        {selectedStationData.realtime.todayHigh !== null && !isNaN(Number(selectedStationData.realtime.todayHigh)) && (
                           <div className="flex items-center gap-2.5 bg-zinc-900/40 py-1.5 px-3 rounded-xl border border-zinc-850">
                             <TrendingUp className="h-4 w-4 text-rose-400 shrink-0" />
                             <div>
                               <span className="text-[9px] text-zinc-500 block leading-tight">今日最高</span>
                               <span className="text-xs font-mono font-bold text-rose-400">
-                                {selectedStationData.realtime.todayHigh.toFixed(1)}°C
+                                {Number(selectedStationData.realtime.todayHigh).toFixed(1)}°C
                               </span>
                             </div>
                           </div>
@@ -1088,9 +1140,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-amber-300">
-                          {dailyMetrics.high !== null ? `${dailyMetrics.high.toFixed(1)}` : 'NA'}
+                          {dailyMetrics.high !== null && !isNaN(dailyMetrics.high) ? `${dailyMetrics.high.toFixed(1)}` : 'NA'}
                         </span>
-                        {dailyMetrics.high !== null && <span className="text-xs text-amber-400 font-semibold ml-0.5">°C</span>}
+                        {dailyMetrics.high !== null && !isNaN(dailyMetrics.high) && <span className="text-xs text-amber-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日中最高溫度點</span>
                     </div>
@@ -1103,9 +1155,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-sky-300">
-                          {dailyMetrics.low !== null ? `${dailyMetrics.low.toFixed(1)}` : 'NA'}
+                          {dailyMetrics.low !== null && !isNaN(dailyMetrics.low) ? `${dailyMetrics.low.toFixed(1)}` : 'NA'}
                         </span>
-                        {dailyMetrics.low !== null && <span className="text-xs text-sky-400 font-semibold ml-0.5">°C</span>}
+                        {dailyMetrics.low !== null && !isNaN(dailyMetrics.low) && <span className="text-xs text-sky-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日中最低溫度點</span>
                     </div>
@@ -1118,9 +1170,9 @@ export default function App() {
                       </div>
                       <div className="mt-4">
                         <span className="text-3xl font-mono font-bold text-teal-300">
-                          {dailyMetrics.mean !== null ? `${dailyMetrics.mean.toFixed(1)}` : 'NA'}
+                          {dailyMetrics.mean !== null && !isNaN(dailyMetrics.mean) ? `${dailyMetrics.mean.toFixed(1)}` : 'NA'}
                         </span>
-                        {dailyMetrics.mean !== null && <span className="text-xs text-teal-400 font-semibold ml-0.5">°C</span>}
+                        {dailyMetrics.mean !== null && !isNaN(dailyMetrics.mean) && <span className="text-xs text-teal-400 font-semibold ml-0.5">°C</span>}
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">一日平均觀測值</span>
                     </div>
@@ -1263,7 +1315,7 @@ export default function App() {
                                   <Tooltip content={<CustomHourlyTooltip />} />
                                   
                                   {/* Reference line for Daily High */}
-                                  {dailyMetrics.high !== null && (
+                                  {dailyMetrics.high !== null && !isNaN(dailyMetrics.high) && (
                                     <ReferenceLine
                                       yAxisId="left"
                                       y={dailyMetrics.high}
@@ -1280,7 +1332,7 @@ export default function App() {
                                   )}
 
                                   {/* Reference line for Daily Low */}
-                                  {dailyMetrics.low !== null && (
+                                  {dailyMetrics.low !== null && !isNaN(dailyMetrics.low) && (
                                     <ReferenceLine
                                       yAxisId="left"
                                       y={dailyMetrics.low}
@@ -1715,7 +1767,9 @@ export default function App() {
                       <p className="text-xs text-zinc-500 mt-1">昨日最高溫達到</p>
                     </div>
                     <div className="mt-4 flex items-baseline">
-                      <span className="text-3xl font-mono font-black text-amber-400">{taiwanStats.maxHigh.toFixed(1)}</span>
+                      <span className="text-3xl font-mono font-black text-amber-400">
+                        {taiwanStats.maxHigh !== null && !isNaN(taiwanStats.maxHigh) ? taiwanStats.maxHigh.toFixed(1) : '--'}
+                      </span>
                       <span className="text-sm font-bold text-amber-500 ml-0.5">°C</span>
                     </div>
                   </div>
@@ -1731,7 +1785,9 @@ export default function App() {
                       <p className="text-xs text-zinc-500 mt-1">昨日最低溫降至</p>
                     </div>
                     <div className="mt-4 flex items-baseline">
-                      <span className="text-3xl font-mono font-black text-sky-400">{taiwanStats.minLow.toFixed(1)}</span>
+                      <span className="text-3xl font-mono font-black text-sky-400">
+                        {taiwanStats.minLow !== null && !isNaN(taiwanStats.minLow) ? taiwanStats.minLow.toFixed(1) : '--'}
+                      </span>
                       <span className="text-sm font-bold text-sky-500 ml-0.5">°C</span>
                     </div>
                   </div>
@@ -1747,7 +1803,9 @@ export default function App() {
                       <p className="text-xs text-zinc-500 mt-1">局屬31測站之平均值</p>
                     </div>
                     <div className="mt-4 flex items-baseline text-zinc-100">
-                      <span className="text-3xl font-mono font-bold text-amber-400">{taiwanStats.averageHigh.toFixed(1)}</span>
+                      <span className="text-3xl font-mono font-bold text-amber-400">
+                        {taiwanStats.averageHigh !== null && !isNaN(taiwanStats.averageHigh) ? taiwanStats.averageHigh.toFixed(1) : '--'}
+                      </span>
                       <span className="text-sm font-semibold ml-0.5 text-zinc-500">°C</span>
                     </div>
                   </div>

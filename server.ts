@@ -246,13 +246,33 @@ async function startServer() {
         }
       }
 
-      // Merge realtime observations directly onto manned stations
+      // Merge realtime observations directly onto manned stations and normalize daily statistics numbers
       locations.forEach((loc: any) => {
-        const sId = loc.station.StationID;
+        const sId = loc.station?.StationID;
         if (realtimeMap.has(sId)) {
           loc.realtime = realtimeMap.get(sId);
         }
+        const daily = loc.stationObsStatistics?.AirTemperature?.daily;
+        if (Array.isArray(daily)) {
+          daily.forEach((d: any) => {
+            const parseVal = (v: any): number | null => {
+              if (v === null || v === undefined || v === '' || v === '-99' || v === '-999' || v === 'X') return null;
+              const n = typeof v === 'number' ? v : parseFloat(String(v));
+              return isNaN(n) ? null : parseFloat(n.toFixed(1));
+            };
+            d.Maximum = parseVal(d.Maximum);
+            d.Minimum = parseVal(d.Minimum);
+            d.Mean = parseVal(d.Mean);
+          });
+        }
       });
+
+      // Helper to safely parse numeric values from API responses
+      const parseWeatherNumber = (val: any): number | null => {
+        if (val === null || val === undefined || val === '' || val === '-99' || val === '-999' || val === 'X') return null;
+        const n = typeof val === 'number' ? val : parseFloat(String(val));
+        return isNaN(n) ? null : n;
+      };
 
       // Map each retrieved automatic station and build virtual locations dynamically
       if (autoStations.length > 0) {
@@ -269,11 +289,11 @@ async function startServer() {
             if (Array.isArray(coords)) {
               const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
               if (wgs84) {
-                latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
-                longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
+                latitude = parseWeatherNumber(wgs84.StationLatitude);
+                longitude = parseWeatherNumber(wgs84.StationLongitude);
               } else if (coords.length > 0) {
-                latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
-                longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
+                latitude = parseWeatherNumber(coords[0].StationLatitude);
+                longitude = parseWeatherNumber(coords[0].StationLongitude);
               }
             }
 
@@ -287,18 +307,15 @@ async function startServer() {
             if (!refManned) continue;
 
             // Get current values
-            const autoTempStr = rtStation.WeatherElement?.AirTemperature;
-            const autoHumStr = rtStation.WeatherElement?.RelativeHumidity;
-            const autoPrecStr = rtStation.WeatherElement?.Now?.Precipitation;
-
-            const autoTemp = autoTempStr && autoTempStr !== '-99' && autoTempStr !== '-999' && autoTempStr !== 'X' ? parseFloat(autoTempStr) : null;
-            const autoHum = autoHumStr && autoHumStr !== '-99' && autoHumStr !== '-999' && autoHumStr !== 'X' ? parseFloat(autoHumStr) : null;
-            const autoPrec = autoPrecStr && autoPrecStr !== '-99' && autoPrecStr !== '-999' && autoPrecStr !== 'X' ? parseFloat(autoPrecStr) : 0.0;
+            const autoTemp = parseWeatherNumber(rtStation.WeatherElement?.AirTemperature);
+            const autoHum = parseWeatherNumber(rtStation.WeatherElement?.RelativeHumidity);
+            const autoPrec = parseWeatherNumber(rtStation.WeatherElement?.Now?.Precipitation) ?? 0.0;
 
             // Get manned values in real-time or from existing data
-            const refRtStation = autoStations.find((st: any) => st.StationId === refId);
-            const mannedTempStr = refRtStation?.WeatherElement?.AirTemperature;
-            const mannedTemp = mannedTempStr && mannedTempStr !== '-99' && mannedTempStr !== '-999' && mannedTempStr !== 'X' ? parseFloat(mannedTempStr) : null;
+            const refRtStation = autoStations.find((st: any) => st.StationId === refId) || realtimeMap.get(refId);
+            const mannedTemp = refRtStation?.temperature !== undefined
+              ? parseWeatherNumber(refRtStation.temperature)
+              : parseWeatherNumber(refRtStation?.WeatherElement?.AirTemperature);
 
             // Calculate temperature offset
             let offset = 0.0;
@@ -311,56 +328,63 @@ async function startServer() {
             // Derive 24-hour observation timeline from manned reference station
             const refObsTimes = refManned.stationObsTimes?.stationObsTime || [];
             const syntheticObsTimes = refObsTimes.map((obs: any) => {
-              const refTemp = parseFloat(obs.weatherElements?.AirTemperature);
-              const refHum = parseFloat(obs.weatherElements?.RelativeHumidity);
+              const refTemp = parseWeatherNumber(obs.weatherElements?.AirTemperature);
+              const refHum = parseWeatherNumber(obs.weatherElements?.RelativeHumidity);
 
-              let symTemp = refTemp;
-              if (autoTemp === null) {
-                symTemp = NaN;
-              } else if (!isNaN(refTemp)) {
+              let symTemp: number | null = null;
+              if (autoTemp === null || refTemp === null) {
+                symTemp = null;
+              } else {
                 symTemp = parseFloat((refTemp + offset).toFixed(1));
               }
 
-              let symHum = refHum;
-              if (autoHum !== null && !isNaN(refHum)) {
-                const humDiff = autoHum - (refRtStation?.WeatherElement?.RelativeHumidity ? parseFloat(refRtStation.WeatherElement.RelativeHumidity) : refHum);
+              let symHum: number | null = null;
+              if (autoHum !== null && refHum !== null) {
+                const refRtHum = refRtStation?.humidity !== undefined
+                  ? parseWeatherNumber(refRtStation.humidity)
+                  : parseWeatherNumber(refRtStation?.WeatherElement?.RelativeHumidity);
+                const humDiff = autoHum - (refRtHum ?? refHum);
                 symHum = Math.min(100, Math.max(0, Math.round(refHum + (isNaN(humDiff) ? 0 : humDiff))));
-              } else if (autoHum === null) {
-                symHum = NaN;
+              } else if (refHum !== null) {
+                symHum = refHum;
               }
 
               return {
                 DateTime: obs.DateTime,
                 weatherElements: {
                   ...obs.weatherElements,
-                  AirTemperature: isNaN(symTemp) ? '-99' : String(symTemp),
-                  RelativeHumidity: isNaN(symHum) ? '-99' : String(symHum),
-                  Precipitation: obs.weatherElements.Precipitation
+                  AirTemperature: symTemp === null ? '-99' : String(symTemp),
+                  RelativeHumidity: symHum === null ? '-99' : String(symHum),
+                  Precipitation: obs.weatherElements?.Precipitation || '0.0'
                 }
               };
             });
 
             // Extract daily extremes from O-A0001-001 daily extremes if available
-            const extremeHighStr = rtStation.WeatherElement?.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature;
-            const extremeLowStr = rtStation.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature;
+            const extremeHigh = parseWeatherNumber(rtStation.WeatherElement?.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature);
+            const extremeLow = parseWeatherNumber(rtStation.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature);
 
             const refDailyStats = refManned.stationObsStatistics?.AirTemperature?.daily?.[0];
+            const refMax = parseWeatherNumber(refDailyStats?.Maximum);
+            const refMin = parseWeatherNumber(refDailyStats?.Minimum);
+            const refMean = parseWeatherNumber(refDailyStats?.Mean);
+
             const syntheticDailyHigh = autoTemp === null
               ? null
-              : (extremeHighStr && extremeHighStr !== '-99' && extremeHighStr !== '-999' && extremeHighStr !== 'X'
-                ? parseFloat(extremeHighStr) 
-                : (refDailyStats?.Maximum ? parseFloat((refDailyStats.Maximum + offset).toFixed(1)) : null));
+              : (extremeHigh !== null
+                ? extremeHigh
+                : (refMax !== null ? parseFloat((refMax + offset).toFixed(1)) : null));
               
             const syntheticDailyLow = autoTemp === null
               ? null
-              : (extremeLowStr && extremeLowStr !== '-99' && extremeLowStr !== '-999' && extremeLowStr !== 'X'
-                ? parseFloat(extremeLowStr) 
-                : (refDailyStats?.Minimum ? parseFloat((refDailyStats.Minimum + offset).toFixed(1)) : null));
+              : (extremeLow !== null
+                ? extremeLow
+                : (refMin !== null ? parseFloat((refMin + offset).toFixed(1)) : null));
 
             const syntheticDailyMean = autoTemp === null
               ? null
-              : (refDailyStats?.Mean 
-                ? parseFloat((refDailyStats.Mean + offset).toFixed(1)) 
+              : (refMean !== null
+                ? parseFloat((refMean + offset).toFixed(1))
                 : null);
 
             // Build complete virtual station object
@@ -423,6 +447,12 @@ async function startServer() {
     try {
       const authorization = process.env.CWA_API_KEY || 'CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D';
       
+      const parseWeatherNumber = (val: any): number | null => {
+        if (val === null || val === undefined || val === '' || val === '-99' || val === '-999' || val === 'X') return null;
+        const n = typeof val === 'number' ? val : parseFloat(String(val));
+        return isNaN(n) ? null : n;
+      };
+
       // Calculate current date in Taiwan dynamically
       const todayTaiwanStr = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Taipei',
@@ -432,7 +462,7 @@ async function startServer() {
       }).format(new Date()); // e.g. "2026-07-09"
 
       const [yr, mo, dy] = todayTaiwanStr.split('-').map(Number);
-      const dateStrings = [];
+      const dateStrings: string[] = [];
       for (let i = 0; i < 30; i++) {
         const d = new Date(Date.UTC(yr, mo - 1, dy));
         d.setUTCDate(d.getUTCDate() - (29 - i));
@@ -446,13 +476,9 @@ async function startServer() {
         if (!Array.isArray(stationList)) return;
         const st = stationList.find((s: any) => s.StationId === stationId);
         if (st) {
-          const tempStr = st.WeatherElement?.AirTemperature;
-          const dailyHighStr = st.WeatherElement?.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature;
-          const dailyLowStr = st.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature;
-
-          liveTemp = tempStr && tempStr !== '-99' && tempStr !== '-999' && tempStr !== 'X' ? parseFloat(tempStr) : null;
-          liveHigh = dailyHighStr && dailyHighStr !== '-99' ? parseFloat(dailyHighStr) : null;
-          liveLow = dailyLowStr && dailyLowStr !== '-99' ? parseFloat(dailyLowStr) : null;
+          liveTemp = parseWeatherNumber(st.WeatherElement?.AirTemperature);
+          liveHigh = parseWeatherNumber(st.WeatherElement?.DailyExtreme?.DailyHigh?.TemperatureInfo?.AirTemperature);
+          liveLow = parseWeatherNumber(st.WeatherElement?.DailyExtreme?.DailyLow?.TemperatureInfo?.AirTemperature);
         }
       };
 
@@ -480,11 +506,11 @@ async function startServer() {
               if (Array.isArray(coords)) {
                 const wgs84 = coords.find((c: any) => c.CoordinateName === 'WGS84');
                 if (wgs84) {
-                  latitude = wgs84.StationLatitude ? parseFloat(wgs84.StationLatitude) : null;
-                  longitude = wgs84.StationLongitude ? parseFloat(wgs84.StationLongitude) : null;
+                  latitude = parseWeatherNumber(wgs84.StationLatitude);
+                  longitude = parseWeatherNumber(wgs84.StationLongitude);
                 } else if (coords.length > 0) {
-                  latitude = coords[0].StationLatitude ? parseFloat(coords[0].StationLatitude) : null;
-                  longitude = coords[0].StationLongitude ? parseFloat(coords[0].StationLongitude) : null;
+                  latitude = parseWeatherNumber(coords[0].StationLatitude);
+                  longitude = parseWeatherNumber(coords[0].StationLongitude);
                 }
               }
 
@@ -493,8 +519,7 @@ async function startServer() {
 
                 // Compute real-time temperature difference between this auto station and nearest reference manned station
                 const refRtStation = autoStations.find((st: any) => st.StationId === targetStationId);
-                const refTempStr = refRtStation?.WeatherElement?.AirTemperature;
-                const refTemp = refTempStr && refTempStr !== '-99' && refTempStr !== '-999' && refTempStr !== 'X' ? parseFloat(refTempStr) : null;
+                const refTemp = parseWeatherNumber(refRtStation?.WeatherElement?.AirTemperature);
 
                 if (liveTemp !== null && refTemp !== null) {
                   offset = liveTemp - refTemp;
@@ -527,8 +552,16 @@ async function startServer() {
         try {
           const mannedRealtimeData = await mannedRealtimeRes.json();
           const mannedRealtimeStations = mannedRealtimeData?.records?.Station || [];
-          if (liveHigh === null || liveLow === null) {
+          if (liveHigh === null || liveLow === null || liveTemp === null) {
             parseLiveStation(mannedRealtimeStations);
+          }
+          if (isAuto && offset === 0.0 && liveTemp !== null) {
+            const refMannedRt = mannedRealtimeStations.find((st: any) => st.StationId === targetStationId);
+            const refTemp = parseWeatherNumber(refMannedRt?.WeatherElement?.AirTemperature);
+            if (refTemp !== null) {
+              offset = liveTemp - refTemp;
+              console.log(`Dynamic monthly offset from manned realtime for ${stationId} vs ${targetStationId}: ${offset.toFixed(1)}°C`);
+            }
           }
         } catch (e) {
           console.error('Error parsing manned realtime stations in monthly:', e);
@@ -536,7 +569,7 @@ async function startServer() {
       }
 
       // 2. Build the historical data map from C-B0024-001
-      const dailyMap = new Map();
+      const dailyMap = new Map<string, { high: number | null; low: number | null; mean: number | null }>();
       let anchorHigh = 34.0;
       let anchorLow = 26.0;
       let anchorMean = 29.5;
@@ -555,10 +588,13 @@ async function startServer() {
             const dailyRecords = histStationData.stationObsStatistics?.AirTemperature?.daily || [];
             for (const item of dailyRecords) {
               if (item.Date) {
+                const maxVal = parseWeatherNumber(item.Maximum);
+                const minVal = parseWeatherNumber(item.Minimum);
+                const meanVal = parseWeatherNumber(item.Mean);
                 dailyMap.set(item.Date, {
-                  high: item.Maximum !== null && item.Maximum !== undefined ? item.Maximum + offset : null,
-                  low: item.Minimum !== null && item.Minimum !== undefined ? item.Minimum + offset : null,
-                  mean: item.Mean !== null && item.Mean !== undefined ? item.Mean + offset : null,
+                  high: maxVal !== null ? parseFloat((maxVal + offset).toFixed(1)) : null,
+                  low: minVal !== null ? parseFloat((minVal + offset).toFixed(1)) : null,
+                  mean: meanVal !== null ? parseFloat((meanVal + offset).toFixed(1)) : null,
                 });
               }
             }
@@ -566,9 +602,12 @@ async function startServer() {
             // Fallback anchors based on the most recent record found
             if (dailyRecords.length > 0) {
               const latestRec = dailyRecords[dailyRecords.length - 1];
-              anchorHigh = (latestRec.Maximum ?? anchorHigh) + offset;
-              anchorLow = (latestRec.Minimum ?? anchorLow) + offset;
-              anchorMean = (latestRec.Mean ?? anchorMean) + offset;
+              const lMax = parseWeatherNumber(latestRec.Maximum);
+              const lMin = parseWeatherNumber(latestRec.Minimum);
+              const lMean = parseWeatherNumber(latestRec.Mean);
+              if (lMax !== null) anchorHigh = parseFloat((lMax + offset).toFixed(1));
+              if (lMin !== null) anchorLow = parseFloat((lMin + offset).toFixed(1));
+              if (lMean !== null) anchorMean = parseFloat((lMean + offset).toFixed(1));
             }
           }
         } catch (e) {
@@ -593,11 +632,11 @@ async function startServer() {
             mean: liveTemp !== null ? liveTemp : lastValid.mean,
           };
         } else if (dailyMap.has(dateString)) {
-          const val = dailyMap.get(dateString);
+          const val = dailyMap.get(dateString)!;
           lastValid = {
-            high: val.high !== undefined && val.high !== null ? val.high : lastValid.high,
-            low: val.low !== undefined && val.low !== null ? val.low : lastValid.low,
-            mean: val.mean !== undefined && val.mean !== null ? val.mean : lastValid.mean,
+            high: val.high !== null ? val.high : lastValid.high,
+            low: val.low !== null ? val.low : lastValid.low,
+            mean: val.mean !== null ? val.mean : lastValid.mean,
           };
         } else {
           // Dynamic fallback based on general climate pattern if a single day's observations are missing
@@ -610,9 +649,9 @@ async function startServer() {
           };
         }
 
-        let high = lastValid.high;
-        let low = lastValid.low;
-        let mean = lastValid.mean;
+        let high = typeof lastValid.high === 'number' && !isNaN(lastValid.high) ? lastValid.high : anchorHigh;
+        let low = typeof lastValid.low === 'number' && !isNaN(lastValid.low) ? lastValid.low : anchorLow;
+        let mean = typeof lastValid.mean === 'number' && !isNaN(lastValid.mean) ? lastValid.mean : anchorMean;
 
         // Clamp values to ensure sanity
         if (low > mean) low = mean - 2.0;
@@ -638,8 +677,6 @@ async function startServer() {
     }
   });
 
-
-
   // API Route for 24-hour observation timeline fetched from custom worker
   app.get('/api/weather/hourly', async (req, res) => {
     const { stationId } = req.query;
@@ -651,15 +688,20 @@ async function startServer() {
 
     try {
       console.log(`Fetching 24h hourly observation for station ${stationId} from custom worker: ${url}`);
-      const response = await fetch(url);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`Worker API returned status ${response.status}`);
       }
       const data = await response.json();
-      res.json(data);
+      res.json(Array.isArray(data) ? data : []);
     } catch (e: any) {
       console.error(`Fetching hourly weather from worker failed for station ${stationId}: ${e.message}`);
-      res.status(500).json({ error: `即時觀測資料取得失敗: ${e.message}` });
+      // Return empty array with 200 so comparative visualizations do not fail catastrophically
+      res.json([]);
     }
   });
 

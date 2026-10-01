@@ -297,11 +297,11 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
           <div class="space-y-1">
             <div class="flex justify-between items-center gap-4">
               <span class="text-zinc-500">觀測氣溫</span>
-              <span class="font-mono font-bold text-amber-400 text-sm">${temp !== null ? `${temp.toFixed(1)}°C` : 'NA'}</span>
+              <span class="font-mono font-bold text-amber-400 text-sm">${temp !== null && !isNaN(Number(temp)) ? `${Number(temp).toFixed(1)}°C` : 'NA'}</span>
             </div>
             <div class="flex justify-between items-center gap-4">
               <span class="text-zinc-500">測站海拔</span>
-              <span class="font-mono font-medium text-zinc-300">${altitude !== null ? `${altitude.toFixed(0)} m` : '-- m'}</span>
+              <span class="font-mono font-medium text-zinc-300">${altitude !== null && !isNaN(Number(altitude)) ? `${Number(altitude).toFixed(0)} m` : '-- m'}</span>
             </div>
           </div>
         </div>
