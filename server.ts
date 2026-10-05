@@ -686,6 +686,8 @@ async function startServer() {
 
     const url = `https://cwa.link1to4.workers.dev/api/weather/hourly?stationId=${stationId}`;
 
+    let list: any[] = [];
+
     try {
       console.log(`Fetching 24h hourly observation for station ${stationId} from custom worker: ${url}`);
       const controller = new AbortController();
@@ -693,16 +695,57 @@ async function startServer() {
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Worker API returned status ${response.status}`);
+      if (response.ok) {
+        const json = await response.json();
+        if (Array.isArray(json)) {
+          list = json;
+        } else if (Array.isArray(json?.data)) {
+          list = json.data;
+        }
+      } else {
+        console.warn(`Worker API returned status ${response.status} for station ${stationId}`);
       }
-      const data = await response.json();
-      res.json(Array.isArray(data) ? data : []);
     } catch (e: any) {
       console.error(`Fetching hourly weather from worker failed for station ${stationId}: ${e.message}`);
-      // Return empty array with 200 so comparative visualizations do not fail catastrophically
-      res.json([]);
     }
+
+    // Fallback: If worker returned no data or failed, query CWA manned climate daily observations (C-B0024-001)
+    if (list.length === 0) {
+      try {
+        console.log(`Attempting CWA C-B0024-001 fallback for station ${stationId}...`);
+        const authorization = process.env.CWA_API_KEY || 'CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D';
+        const isAuto = stationId.startsWith('C') || stationId.startsWith('A') || isNaN(Number(stationId));
+        const targetId = isAuto ? '466920' : stationId;
+        const fbRes = await fetch(`https://opendata.cwa.gov.tw/api/v1/rest/datastore/C-B0024-001?Authorization=${authorization}&format=JSON&StationID=${targetId}`);
+        if (fbRes.ok) {
+          const fbJson = await fbRes.json();
+          const loc = fbJson?.records?.location?.find((l: any) => l.station?.StationID === targetId);
+          const obsTimes = loc?.stationObsTimes?.stationObsTime || [];
+          if (obsTimes.length > 0) {
+            list = obsTimes.map((obs: any) => {
+              const dt = obs.DateTime ? new Date(obs.DateTime) : null;
+              const timeStr = dt && !isNaN(dt.getTime())
+                ? `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:00`
+                : (obs.DateTime || '');
+              const t = obs.weatherElements?.AirTemperature;
+              const h = obs.weatherElements?.RelativeHumidity;
+              const p = obs.weatherElements?.Precipitation;
+              return {
+                time: timeStr,
+                dateTime: obs.DateTime,
+                temperature: (t && t !== '-99' && t !== '-999' && t !== 'X') ? parseFloat(t) : null,
+                humidity: (h && h !== '-99' && h !== '-999' && h !== 'X') ? parseFloat(h) : null,
+                precipitation: p === 'T' ? 0.05 : ((p && p !== '-99' && p !== '-999' && p !== 'X') ? parseFloat(p) : 0.0),
+              };
+            });
+          }
+        }
+      } catch (fbErr: any) {
+        console.error(`Fallback hourly CWA fetch error for station ${stationId}:`, fbErr?.message);
+      }
+    }
+
+    res.json(list);
   });
 
   // API Route for Gemini-based Monthly Weather Trend analysis

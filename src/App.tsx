@@ -318,16 +318,17 @@ export default function App() {
         throw new Error(errMsg);
       }
       const json = await response.json();
+      const records = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
       setHourlyData(prev => ({
         ...prev,
-        [stationId]: Array.isArray(json) ? json : []
+        [stationId]: records
       }));
     } catch (err: any) {
       console.error(err);
       setHourlyError(err.message || '無法取得該測站之24小時變化數據');
       setHourlyData(prev => ({
         ...prev,
-        [stationId]: []
+        [stationId]: prev[stationId] || []
       }));
     } finally {
       setHourlyLoading(false);
@@ -342,21 +343,22 @@ export default function App() {
       const response = await fetch(`/api/weather/hourly?stationId=${stationId}&_t=${Date.now()}`);
       if (response.ok) {
         const json = await response.json();
+        const records = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
         setHourlyData(prev => ({
           ...prev,
-          [stationId]: Array.isArray(json) ? json : []
+          [stationId]: records
         }));
       } else {
         setHourlyData(prev => ({
           ...prev,
-          [stationId]: []
+          [stationId]: prev[stationId] || []
         }));
       }
     } catch (err) {
       console.error(`Failed to fetch comparison hourly data for ${stationId}`, err);
       setHourlyData(prev => ({
         ...prev,
-        [stationId]: []
+        [stationId]: prev[stationId] || []
       }));
     } finally {
       inFlightHourlyRef.current.delete(stationId);
@@ -592,24 +594,70 @@ export default function App() {
 
   // Format hourly data for line chart
   const hourlyChartData = useMemo(() => {
-    const records = hourlyData[selectedStationId] || [];
+    let records = hourlyData[selectedStationId] || [];
+
+    // Fallback: If hourlyData for this station is empty, use stationObsTimes from selectedStationData
+    if (records.length === 0 && selectedStationData?.stationObsTimes?.stationObsTime) {
+      records = selectedStationData.stationObsTimes.stationObsTime.map((obs) => {
+        const dt = obs.DateTime ? new Date(obs.DateTime) : null;
+        const timeStr = dt && !isNaN(dt.getTime())
+          ? `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:00`
+          : (obs.DateTime || '');
+        const temp = parseWeatherNumber(obs.weatherElements?.AirTemperature);
+        const hum = parseWeatherNumber(obs.weatherElements?.RelativeHumidity);
+        const precRaw = obs.weatherElements?.Precipitation;
+        const prec = precRaw === 'T' ? 0.05 : parseWeatherNumber(precRaw);
+        return {
+          time: timeStr,
+          dateTime: obs.DateTime,
+          temperature: temp,
+          humidity: hum,
+          precipitation: prec,
+        };
+      });
+    }
+
     if (records.length === 0) return [];
 
     return records
       .map((item) => {
         return {
           time: item.time, // Keep full original time (e.g. "07/10 16:00") to avoid duplicate keys in Recharts
-          temperature: item.temperature,
-          humidity: item.humidity,
-          precipitation: item.precipitation,
+          temperature: item.temperature !== null && item.temperature !== undefined ? Number(item.temperature) : null,
+          humidity: item.humidity !== null && item.humidity !== undefined ? Number(item.humidity) : null,
+          precipitation: item.precipitation !== null && item.precipitation !== undefined ? Number(item.precipitation) : null,
         };
       })
-      .filter((d) => d.temperature !== null); // Only plot hours with valid temperatures
-  }, [hourlyData, selectedStationId]);
+      .filter((d) => d.temperature !== null && !isNaN(d.temperature as number)); // Only plot hours with valid temperatures
+  }, [hourlyData, selectedStationId, selectedStationData]);
 
   // Generate hourly multi-station comparative dataset
   const comparisonHourlyChartData = useMemo(() => {
-    const primaryRecords = hourlyData[selectedStationId] || [];
+    // If selected station has records, use it as baseline; otherwise search other compared stations
+    let primaryRecords = hourlyData[selectedStationId] || [];
+    if (primaryRecords.length === 0) {
+      for (const id of comparedStationIds) {
+        if (hourlyData[id] && hourlyData[id].length > 0) {
+          primaryRecords = hourlyData[id];
+          break;
+        }
+      }
+    }
+
+    if (primaryRecords.length === 0) {
+      if (selectedStationData?.stationObsTimes?.stationObsTime) {
+        primaryRecords = selectedStationData.stationObsTimes.stationObsTime.map((obs) => {
+          const dt = obs.DateTime ? new Date(obs.DateTime) : null;
+          return {
+            time: dt && !isNaN(dt.getTime())
+              ? `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:00`
+              : (obs.DateTime || ''),
+            temperature: parseWeatherNumber(obs.weatherElements?.AirTemperature),
+          };
+        });
+      }
+    }
+
     if (primaryRecords.length === 0 || comparedStationIds.length === 0) return [];
 
     return primaryRecords.map((refItem) => {
@@ -622,10 +670,10 @@ export default function App() {
         // Find matching record by matching the exact time string (e.g. "07/10 16:00")
         // fallback to matching just the hour if dates are different
         const matchRecord = stationRecords.find(r => r.time === refItem.time) || 
-                            stationRecords.find(r => r.time.endsWith(refItem.time.substring(5)));
+                            stationRecords.find(r => r.time && refItem.time && r.time.slice(-5) === refItem.time.slice(-5));
 
-        if (matchRecord) {
-          point[stationName] = matchRecord.temperature;
+        if (matchRecord && matchRecord.temperature !== null && !isNaN(Number(matchRecord.temperature))) {
+          point[stationName] = Number(matchRecord.temperature);
         } else {
           point[stationName] = null;
         }
@@ -633,7 +681,7 @@ export default function App() {
 
       return point;
     });
-  }, [hourlyData, comparedStationIds, selectedStationId, stationsList]);
+  }, [hourlyData, comparedStationIds, selectedStationId, stationsList, selectedStationData]);
 
   // Generate monthly multi-station comparative dataset using daily average
   const comparisonMonthlyChartData = useMemo(() => {
@@ -1269,183 +1317,214 @@ export default function App() {
                             )}
                           </div>
 
-                          <div className="h-[340px] w-full bg-zinc-950/50 rounded-2xl p-3 border border-zinc-900">
-                            <ResponsiveContainer width="100%" height="100%">
-                              {comparedStationIds.length <= 1 ? (
-                                <LineChart data={hourlyChartData} margin={{ top: 20, right: 15, left: -20, bottom: 5 }}>
-                                  <defs>
-                                    <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.2} />
-                                      <stop offset="95%" stopColor="#fbbf24" stopOpacity={0} />
-                                    </linearGradient>
-                                  </defs>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                                  <XAxis 
-                                    dataKey="time" 
-                                    stroke="#71717a" 
-                                    fontSize={10} 
-                                    tickLine={false} 
-                                    axisLine={false}
-                                    tickFormatter={(val) => {
-                                      const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
-                                      return match ? match[1] : val;
-                                    }}
-                                  />
-                                  <YAxis 
-                                    yAxisId="left"
-                                    stroke="#fbbf24" 
-                                    fontSize={10} 
-                                    tickLine={false} 
-                                    axisLine={false}
-                                    domain={['auto', 'auto']}
-                                  >
-                                    <Label value="溫度 (°C)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#fbbf24', fontSize: 9 }} offset={-10} />
-                                  </YAxis>
-                                  <YAxis 
-                                    yAxisId="right"
-                                    orientation="right"
-                                    stroke="#38bdf8" 
-                                    fontSize={10} 
-                                    tickLine={false} 
-                                    axisLine={false}
-                                    domain={[0, 100]}
-                                  >
-                                    <Label value="相對濕度 (%)" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#38bdf8', fontSize: 9 }} offset={-10} />
-                                  </YAxis>
-                                  <Tooltip content={<CustomHourlyTooltip />} />
-                                  
-                                  {/* Reference line for Daily High */}
-                                  {dailyMetrics.high !== null && !isNaN(dailyMetrics.high) && (
-                                    <ReferenceLine
-                                      yAxisId="left"
-                                      y={dailyMetrics.high}
-                                      stroke="#fbbf24"
-                                      strokeDasharray="4 4"
-                                      label={{
-                                        value: `最高溫 ${dailyMetrics.high.toFixed(1)}°C`,
-                                        position: 'top',
-                                        fill: '#fbbf24',
-                                        fontSize: 9,
-                                        fontWeight: 'bold'
+                          {hourlyLoading && hourlyChartData.length === 0 ? (
+                            <div className="h-[340px] w-full bg-zinc-950/20 border border-zinc-900 rounded-2xl flex flex-col items-center justify-center gap-3">
+                              <div className="h-8 w-8 rounded-full border-2 border-amber-500/10 border-t-amber-400 animate-spin" />
+                              <p className="text-xs text-zinc-500">正在加載24小時觀測資料...</p>
+                            </div>
+                          ) : hourlyError && hourlyChartData.length === 0 ? (
+                            <div className="h-[340px] w-full bg-zinc-950/20 border border-zinc-900 rounded-2xl flex flex-col items-center justify-center gap-2 p-6 text-center">
+                              <AlertCircle className="h-6 w-6 text-amber-500/80 mb-1" />
+                              <p className="text-xs text-zinc-400">{hourlyError}</p>
+                              <button
+                                onClick={() => fetchHourlyData(selectedStationId)}
+                                className="mt-2 px-3 py-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 rounded-xl transition-all cursor-pointer"
+                              >
+                                重新載入
+                              </button>
+                            </div>
+                          ) : hourlyChartData.length > 0 ? (
+                            <div className="h-[340px] w-full min-w-0 bg-zinc-950/50 rounded-2xl p-3 border border-zinc-900">
+                              <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+                                {comparedStationIds.length <= 1 ? (
+                                  <LineChart data={hourlyChartData} margin={{ top: 20, right: 15, left: -20, bottom: 5 }}>
+                                    <defs>
+                                      <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.2} />
+                                        <stop offset="95%" stopColor="#fbbf24" stopOpacity={0} />
+                                      </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                                    <XAxis 
+                                      dataKey="time" 
+                                      stroke="#71717a" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      minTickGap={25}
+                                      tickFormatter={(val) => {
+                                        if (!val) return '';
+                                        const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
+                                        return match ? match[1] : val;
                                       }}
                                     />
-                                  )}
-
-                                  {/* Reference line for Daily Low */}
-                                  {dailyMetrics.low !== null && !isNaN(dailyMetrics.low) && (
-                                    <ReferenceLine
+                                    <YAxis 
                                       yAxisId="left"
-                                      y={dailyMetrics.low}
-                                      stroke="#38bdf8"
-                                      strokeDasharray="4 4"
-                                      label={{
-                                        value: `最低溫 ${dailyMetrics.low.toFixed(1)}°C`,
-                                        position: 'bottom',
-                                        fill: '#38bdf8',
-                                        fontSize: 9,
-                                        fontWeight: 'bold'
-                                      }}
-                                    />
-                                  )}
-
-                                  {/* Temperature line */}
-                                  <Line
-                                    yAxisId="left"
-                                    type="monotone"
-                                    dataKey="temperature"
-                                    stroke="#fbbf24"
-                                    strokeWidth={3}
-                                    dot={{ r: 3, stroke: '#d97706', strokeWidth: 1.5, fill: '#09090b' }}
-                                    activeDot={{ r: 6, stroke: '#fbbf24', strokeWidth: 2 }}
-                                  />
-
-                                  {/* Humidity line */}
-                                  <Line
-                                    yAxisId="right"
-                                    type="monotone"
-                                    dataKey="humidity"
-                                    stroke="#38bdf8"
-                                    strokeWidth={1.5}
-                                    dot={false}
-                                    activeDot={{ r: 4 }}
-                                  />
-                                </LineChart>
-                              ) : (
-                                <LineChart data={comparisonHourlyChartData} margin={{ top: 20, right: 15, left: -20, bottom: 5 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                                  <XAxis 
-                                    dataKey="time" 
-                                    stroke="#71717a" 
-                                    fontSize={10} 
-                                    tickLine={false} 
-                                    axisLine={false}
-                                    tickFormatter={(val) => {
-                                      const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
-                                      return match ? match[1] : val;
-                                    }}
-                                  />
-                                  <YAxis 
-                                    yAxisId="left"
-                                    stroke="#e4e4e7" 
-                                    fontSize={10} 
-                                    tickLine={false} 
-                                    axisLine={false}
-                                    domain={['auto', 'auto']}
-                                  >
-                                    <Label value="溫度對比 (°C)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#e4e4e7', fontSize: 9 }} offset={-10} />
-                                  </YAxis>
-                                  <Tooltip content={<CustomComparisonTooltip />} />
-                                  <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', color: '#e4e4e7' }} />
-                                  {comparedStationIds.map((id, idx) => {
-                                    const stationName = stationsList.find(st => st.id === id)?.name || id;
-                                    const colors = ['#fbbf24', '#38bdf8', '#34d399', '#f87171', '#c084fc'];
-                                    const isSelected = id === selectedStationId;
-                                    return (
-                                      <Line
-                                        key={id}
+                                      stroke="#fbbf24" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      domain={['auto', 'auto']}
+                                    >
+                                      <Label value="溫度 (°C)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#fbbf24', fontSize: 9 }} offset={-10} />
+                                    </YAxis>
+                                    <YAxis 
+                                      yAxisId="right"
+                                      orientation="right"
+                                      stroke="#38bdf8" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      domain={[0, 100]}
+                                    >
+                                      <Label value="相對濕度 (%)" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#38bdf8', fontSize: 9 }} offset={-10} />
+                                    </YAxis>
+                                    <Tooltip content={<CustomHourlyTooltip />} />
+                                    
+                                    {/* Reference line for Daily High */}
+                                    {dailyMetrics.high !== null && !isNaN(dailyMetrics.high) && (
+                                      <ReferenceLine
                                         yAxisId="left"
-                                        type="monotone"
-                                        dataKey={stationName}
-                                        stroke={colors[idx % colors.length]}
-                                        strokeWidth={isSelected ? 3.5 : 1.8}
-                                        dot={{ r: isSelected ? 3 : 1.5 }}
-                                        activeDot={{ r: 6 }}
+                                        y={dailyMetrics.high}
+                                        stroke="#fbbf24"
+                                        strokeDasharray="4 4"
+                                        label={{
+                                          value: `最高溫 ${dailyMetrics.high.toFixed(1)}°C`,
+                                          position: 'top',
+                                          fill: '#fbbf24',
+                                          fontSize: 9,
+                                          fontWeight: 'bold'
+                                        }}
                                       />
-                                    );
-                                  })}
-                                </LineChart>
-                              )}
-                            </ResponsiveContainer>
-                          </div>
+                                    )}
+
+                                    {/* Reference line for Daily Low */}
+                                    {dailyMetrics.low !== null && !isNaN(dailyMetrics.low) && (
+                                      <ReferenceLine
+                                        yAxisId="left"
+                                        y={dailyMetrics.low}
+                                        stroke="#38bdf8"
+                                        strokeDasharray="4 4"
+                                        label={{
+                                          value: `最低溫 ${dailyMetrics.low.toFixed(1)}°C`,
+                                          position: 'bottom',
+                                          fill: '#38bdf8',
+                                          fontSize: 9,
+                                          fontWeight: 'bold'
+                                        }}
+                                      />
+                                    )}
+
+                                    {/* Temperature line */}
+                                    <Line
+                                      yAxisId="left"
+                                      type="monotone"
+                                      dataKey="temperature"
+                                      stroke="#fbbf24"
+                                      strokeWidth={3}
+                                      connectNulls={true}
+                                      dot={{ r: hourlyChartData.length > 50 ? 1.5 : 3, stroke: '#d97706', strokeWidth: 1.5, fill: '#09090b' }}
+                                      activeDot={{ r: 6, stroke: '#fbbf24', strokeWidth: 2 }}
+                                    />
+
+                                    {/* Humidity line */}
+                                    <Line
+                                      yAxisId="right"
+                                      type="monotone"
+                                      dataKey="humidity"
+                                      stroke="#38bdf8"
+                                      strokeWidth={1.5}
+                                      connectNulls={true}
+                                      dot={false}
+                                      activeDot={{ r: 4 }}
+                                    />
+                                  </LineChart>
+                                ) : (
+                                  <LineChart data={comparisonHourlyChartData} margin={{ top: 20, right: 15, left: -20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                                    <XAxis 
+                                      dataKey="time" 
+                                      stroke="#71717a" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      minTickGap={25}
+                                      tickFormatter={(val) => {
+                                        if (!val) return '';
+                                        const match = val.match(/\d{2}\/\d{2}\s+(\d{2}:\d{2})/);
+                                        return match ? match[1] : val;
+                                      }}
+                                    />
+                                    <YAxis 
+                                      yAxisId="left"
+                                      stroke="#e4e4e7" 
+                                      fontSize={10} 
+                                      tickLine={false} 
+                                      axisLine={false}
+                                      domain={['auto', 'auto']}
+                                    >
+                                      <Label value="溫度對比 (°C)" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#e4e4e7', fontSize: 9 }} offset={-10} />
+                                    </YAxis>
+                                    <Tooltip content={<CustomComparisonTooltip />} />
+                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '10px', color: '#e4e4e7' }} />
+                                    {comparedStationIds.map((id, idx) => {
+                                      const stationName = stationsList.find(st => st.id === id)?.name || id;
+                                      const colors = ['#fbbf24', '#38bdf8', '#34d399', '#f87171', '#c084fc'];
+                                      const isSelected = id === selectedStationId;
+                                      return (
+                                        <Line
+                                          key={id}
+                                          yAxisId="left"
+                                          type="monotone"
+                                          dataKey={stationName}
+                                          stroke={colors[idx % colors.length]}
+                                          strokeWidth={isSelected ? 3.5 : 1.8}
+                                          connectNulls={true}
+                                          dot={{ r: isSelected ? 2.5 : 1 }}
+                                          activeDot={{ r: 6 }}
+                                        />
+                                      );
+                                    })}
+                                  </LineChart>
+                                )}
+                              </ResponsiveContainer>
+                            </div>
+                          ) : (
+                            <div className="h-[340px] w-full bg-zinc-950/20 border border-zinc-900 rounded-2xl flex items-center justify-center">
+                              <p className="text-xs text-zinc-500">暫無該測站之24小時觀測數據</p>
+                            </div>
+                          )}
                         </div>
 
                       {/* Hourly Wind / rain/ pressure details at selected station */}
-                        <div className="mt-6 border-t border-zinc-800 pt-6">
-                          <h4 className="text-xs font-bold text-zinc-400 mb-3">其他每小時觀測指標 (選取時間)</h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                            {hourlyChartData.slice(-4).map((h, i) => (
-                              <div key={i} className="p-3 bg-zinc-900/40 rounded-xl border border-zinc-850 flex flex-col justify-between">
-                                <span className="font-mono font-bold text-zinc-500">{h.time}</span>
-                                <div className="mt-2 space-y-1">
-                                  <div className="flex justify-between">
-                                    <span className="text-zinc-500">溫度</span>
-                                    <span className="font-semibold text-amber-400">{h.temperature !== null ? `${h.temperature}°C` : 'NA'}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-zinc-500">濕度</span>
-                                    <span className="font-semibold text-sky-400">{h.humidity !== null ? `${h.humidity}%` : '--'}</span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-zinc-500">降雨</span>
-                                    <span className="font-semibold text-teal-400">
-                                      {h.precipitation !== null ? (h.precipitation === 0.05 ? '微量' : `${h.precipitation}mm`) : '0.0mm'}
-                                    </span>
+                        {hourlyChartData.length > 0 && (
+                          <div className="mt-6 border-t border-zinc-800 pt-6">
+                            <h4 className="text-xs font-bold text-zinc-400 mb-3">其他每小時觀測指標 (最近觀測時刻)</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                              {hourlyChartData.slice(-4).map((h, i) => (
+                                <div key={i} className="p-3 bg-zinc-900/40 rounded-xl border border-zinc-850 flex flex-col justify-between">
+                                  <span className="font-mono font-bold text-zinc-500">{h.time}</span>
+                                  <div className="mt-2 space-y-1">
+                                    <div className="flex justify-between">
+                                      <span className="text-zinc-500">溫度</span>
+                                      <span className="font-semibold text-amber-400">{h.temperature !== null ? `${h.temperature}°C` : 'NA'}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-zinc-500">濕度</span>
+                                      <span className="font-semibold text-sky-400">{h.humidity !== null ? `${h.humidity}%` : '--'}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-zinc-500">降雨</span>
+                                      <span className="font-semibold text-teal-400">
+                                        {h.precipitation !== null ? (h.precipitation === 0.05 ? '微量' : `${h.precipitation}mm`) : '0.0mm'}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-6">
