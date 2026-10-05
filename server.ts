@@ -131,6 +131,84 @@ async function startServer() {
 
   app.use(express.json());
 
+  // In-memory tile cache to ensure instant loading and zero upstream throttling
+  const tileCache = new Map<string, { buffer: Buffer; contentType: string; timestamp: number }>();
+  const MAX_CACHE_TILES = 1200;
+
+  // Map Tile Proxy to prevent browser CORS, referer blocking, or rate limiting
+  app.get('/api/tiles/:style/:z/:x/:y', async (req, res) => {
+    const { style, z, x, y } = req.params;
+    const cleanY = y.replace(/\.(png|jpg|jpeg)$/, '');
+    const cacheKey = `${style}/${z}/${x}/${cleanY}`;
+
+    const cached = tileCache.get(cacheKey);
+    if (cached) {
+      res.setHeader('Content-Type', cached.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      return res.send(cached.buffer);
+    }
+
+    try {
+      let targetUrl = '';
+      if (style === 'satellite') {
+        // Esri World Imagery: ArcGIS Server REST tile structure is {level}/{row}/{col} -> {z}/{y}/{x}
+        targetUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${cleanY}/${x}`;
+      } else {
+        // Standard OpenStreetMap tiles
+        targetUrl = `https://tile.openstreetmap.org/${z}/${x}/${cleanY}.png`;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6500);
+
+      const upstreamRes = await fetch(targetUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'TaiwanWeatherDashboard/1.0 (link1to4@gmail.com; cwa-taiwan-weather)',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        }
+      });
+      clearTimeout(timeoutId);
+
+      if (!upstreamRes.ok) {
+        // Fallback for satellite to Taiwan NLSC PHOTO2 aerial orthophoto if Esri is unavailable
+        if (style === 'satellite') {
+          const fallbackRes = await fetch(`https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/${z}/${cleanY}/${x}`);
+          if (fallbackRes.ok) {
+            const buf = Buffer.from(await fallbackRes.arrayBuffer());
+            const ct = fallbackRes.headers.get('content-type') || 'image/jpeg';
+            if (tileCache.size >= MAX_CACHE_TILES) {
+              const firstKey = tileCache.keys().next().value;
+              if (firstKey) tileCache.delete(firstKey);
+            }
+            tileCache.set(cacheKey, { buffer: buf, contentType: ct, timestamp: Date.now() });
+            res.setHeader('Content-Type', ct);
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            return res.send(buf);
+          }
+        }
+        return res.status(upstreamRes.status).send('Tile fetch error');
+      }
+
+      const arrayBuf = await upstreamRes.arrayBuffer();
+      const buffer = Buffer.from(arrayBuf);
+      const contentType = upstreamRes.headers.get('content-type') || (style === 'satellite' ? 'image/jpeg' : 'image/png');
+
+      if (tileCache.size >= MAX_CACHE_TILES) {
+        const firstKey = tileCache.keys().next().value;
+        if (firstKey) tileCache.delete(firstKey);
+      }
+      tileCache.set(cacheKey, { buffer, contentType, timestamp: Date.now() });
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      res.send(buffer);
+    } catch (err: any) {
+      console.error(`Tile proxy error for ${style}/${z}/${x}/${cleanY}:`, err.message);
+      res.status(502).send('Error loading tile');
+    }
+  });
+
   // API Proxy Route for Central Weather Administration API (C-B0024-001) with Automatic Station Integration
   app.get('/api/weather', async (req, res) => {
     try {

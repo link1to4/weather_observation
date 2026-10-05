@@ -143,8 +143,10 @@ function getTemperatureColor(temp: number | null): string {
 export default function WeatherMap({ stations, selectedStationId, onSelectStation }: WeatherMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const baseTileLayerRef = useRef<L.TileLayer | null>(null);
+  const topTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
-  const [mapStyle, setMapStyle] = useState<'dark' | 'streets' | 'satellite'>('dark');
+  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets');
 
   // Track manual selections to prevent zoom loops
   const lastSelectedIdRef = useRef<string>('');
@@ -165,6 +167,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
         zoom: 7.5,
         zoomControl: true,
         scrollWheelZoom: true,
+        maxZoom: 20,
       });
 
       mapRef.current = map;
@@ -173,7 +176,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       // Trigger automatic layout recalculation shortly after mounting
       setTimeout(() => {
         map.invalidateSize();
-      }, 200);
+      }, 100);
 
       // Watch container for dimension changes and auto-correct Leaflet sizing
       if (typeof ResizeObserver !== 'undefined') {
@@ -192,46 +195,76 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
         mapRef.current.remove();
         mapRef.current = null;
         markersGroupRef.current = null;
+        baseTileLayerRef.current = null;
+        topTileLayerRef.current = null;
       }
     };
   }, []);
 
-  // 2. Change Tile Layer (OpenStreetMap Dark vs OpenStreetMap Streets vs Esri Satellite)
+  // 2. Change Tile Layer (Taiwan NLSC Latest Official Maps with Ocean Fallback)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove existing tile layers
+    // Remove previous tile layers if they exist
+    if (baseTileLayerRef.current) {
+      map.removeLayer(baseTileLayerRef.current);
+      baseTileLayerRef.current = null;
+    }
+    if (topTileLayerRef.current) {
+      map.removeLayer(topTileLayerRef.current);
+      topTileLayerRef.current = null;
+    }
+
+    // Double check and remove any orphaned tile layers
     map.eachLayer((layer) => {
       if (layer instanceof L.TileLayer) {
         map.removeLayer(layer);
       }
     });
 
-    let tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    let attribution = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
-    let maxZoom = 19;
-
     if (mapStyle === 'satellite') {
-      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      attribution = 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Source: Esri, USGS';
-      maxZoom = 18;
+      // 1. Global satellite base
+      const satBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        zIndex: 1,
+      }).addTo(map);
+      baseTileLayerRef.current = satBase;
+
+      // 2. Taiwan NLSC Latest High-Res Aerial Orthophoto with Road & Place Overlays (EMAP2 正射影像標註套疊)
+      const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '&copy; <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">國土測繪中心 (最新航照正射影像)</a>',
+        maxNativeZoom: 20,
+        maxZoom: 20,
+        zIndex: 2,
+      }).addTo(map);
+      topTileLayerRef.current = nlscPhoto;
+
+    } else {
+      // 'streets' - Taiwan NLSC Official Latest Electronic Map (臺灣最新通用版電子地圖 EMAP - 2025/2026 最新路網與地標)
+      const baseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        zIndex: 1,
+      }).addTo(map);
+      baseTileLayerRef.current = baseLayer;
+
+      const nlscLayer = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '&copy; <a href="https://maps.nlsc.gov.tw/" target="_blank" rel="noopener noreferrer">內政部國土測繪中心 (NLSC 最新通用地圖)</a>',
+        maxNativeZoom: 20,
+        maxZoom: 20,
+        zIndex: 2,
+      }).addTo(map);
+      topTileLayerRef.current = nlscLayer;
     }
 
-    L.tileLayer(tileUrl, {
-      attribution,
-      maxZoom,
-    }).addTo(map);
-
-    // Apply or remove dark filter class on the map container
-    const container = mapContainerRef.current;
-    if (container) {
-      if (mapStyle === 'dark') {
-        container.classList.add('map-dark-tiles');
-      } else {
-        container.classList.remove('map-dark-tiles');
-      }
-    }
+    // Re-validate map sizing on layer change
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 50);
   }, [mapStyle]);
 
   // 3. Render Custom Markers
@@ -461,27 +494,17 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
               <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
             </span>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              全臺即時氣溫 OpenStreetMap 地圖分佈
+              全臺即時氣象觀測地理分佈
             </h3>
           </div>
           <p className="text-xs text-zinc-500 mt-1">
-            整合中央氣象署各氣象測站即時經緯度與最新氣溫觀測，點擊測站即可定位切換
+            整合氣象署各測站最新觀測，底圖採用內政部國土測繪中心 (NLSC) 最新官方圖資
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {/* Map style toggles */}
           <div className="inline-flex items-center bg-zinc-950 border border-zinc-850 p-1 rounded-xl">
-            <button
-              onClick={() => setMapStyle('dark')}
-              className={`px-3 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
-                mapStyle === 'dark'
-                  ? 'bg-zinc-850 text-amber-400 shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              暗色主題
-            </button>
             <button
               onClick={() => setMapStyle('streets')}
               className={`px-3 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
@@ -490,7 +513,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              明亮彩色
+              臺灣最新通用 (NLSC)
             </button>
             <button
               onClick={() => setMapStyle('satellite')}
@@ -500,7 +523,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              衛星空照
+              航照空照套疊
             </button>
           </div>
 
@@ -517,7 +540,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       <div className="relative flex-1 rounded-xl sm:rounded-2xl border border-zinc-900 overflow-hidden min-h-[200px] sm:min-h-[350px] md:min-h-[450px]">
         <div 
           ref={mapContainerRef} 
-          className={`w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b] ${mapStyle === 'dark' ? 'map-dark-tiles' : ''}`} 
+          className="w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#18181b]" 
         />
 
         {/* Custom Locate Control Button placed right below Leaflet's default Zoom Control (top-left) */}

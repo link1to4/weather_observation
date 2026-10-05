@@ -56,11 +56,6 @@
   display: none !important;
 }
 
-/* OpenStreetMap Dark Mode Tile Filter */
-.map-dark-tiles .leaflet-tile-pane {
-  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%);
-}
-
 /* Leaflet Dark UI Controls */
 .leaflet-bar a {
   background-color: #18181b !important;
