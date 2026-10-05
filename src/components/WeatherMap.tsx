@@ -144,7 +144,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
-  const [mapStyle, setMapStyle] = useState<'dark' | 'streets'>('dark');
+  const [mapStyle, setMapStyle] = useState<'dark' | 'streets' | 'satellite'>('dark');
 
   // Track manual selections to prevent zoom loops
   const lastSelectedIdRef = useRef<string>('');
@@ -166,12 +166,6 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
         zoomControl: true,
         scrollWheelZoom: true,
       });
-
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 18,
-      }).addTo(map);
 
       mapRef.current = map;
       markersGroupRef.current = L.layerGroup().addTo(map);
@@ -202,7 +196,7 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
     };
   }, []);
 
-  // 2. Change Tile Layer (Dark vs Light Streets)
+  // 2. Change Tile Layer (OpenStreetMap Dark vs OpenStreetMap Streets vs Esri Satellite)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -214,20 +208,30 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
       }
     });
 
-    const url = mapStyle === 'dark' 
-      ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    let tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    let attribution = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors';
+    let maxZoom = 19;
 
-    const attribution = mapStyle === 'dark'
-      ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-      : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+    if (mapStyle === 'satellite') {
+      tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      attribution = 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a> &mdash; Source: Esri, USGS';
+      maxZoom = 18;
+    }
 
-    L.tileLayer(url, {
+    L.tileLayer(tileUrl, {
       attribution,
-      subdomains: 'abcd',
-      maxZoom: 18,
+      maxZoom,
     }).addTo(map);
 
+    // Apply or remove dark filter class on the map container
+    const container = mapContainerRef.current;
+    if (container) {
+      if (mapStyle === 'dark') {
+        container.classList.add('map-dark-tiles');
+      } else {
+        container.classList.remove('map-dark-tiles');
+      }
+    }
   }, [mapStyle]);
 
   // 3. Render Custom Markers
@@ -488,6 +492,16 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
             >
               明亮彩色
             </button>
+            <button
+              onClick={() => setMapStyle('satellite')}
+              className={`px-3 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                mapStyle === 'satellite'
+                  ? 'bg-zinc-850 text-amber-400 shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              衛星空照
+            </button>
           </div>
 
           <button
@@ -501,7 +515,10 @@ export default function WeatherMap({ stations, selectedStationId, onSelectStatio
 
       {/* Map Element */}
       <div className="relative flex-1 rounded-xl sm:rounded-2xl border border-zinc-900 overflow-hidden min-h-[200px] sm:min-h-[350px] md:min-h-[450px]">
-        <div ref={mapContainerRef} className="w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b]" />
+        <div 
+          ref={mapContainerRef} 
+          className={`w-full h-full min-h-[200px] sm:min-h-[350px] md:min-h-[450px] z-0 bg-[#09090b] ${mapStyle === 'dark' ? 'map-dark-tiles' : ''}`} 
+        />
 
         {/* Custom Locate Control Button placed right below Leaflet's default Zoom Control (top-left) */}
         <div className="absolute top-[82px] left-[10px] z-[999]">
