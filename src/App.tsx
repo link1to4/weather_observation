@@ -168,8 +168,97 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const sheetGestureRef = useRef<{ x: number; y: number } | null>(null);
+  const sheetRef = useRef<HTMLElement>(null);
+  const [sheetDragHeight, setSheetDragHeight] = useState<number | null>(null);
   const suppressSheetClickRef = useRef(false);
+
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    const handle = sheet?.querySelector<HTMLButtonElement>(".sheet-handle");
+    if (!sheet || !handle) return;
+    let gesture: { x: number; y: number; height: number; min: number; max: number; current: number; moved: boolean; body: boolean } | null = null;
+    const start = (x: number, y: number, target: EventTarget | null) => {
+      gesture = null;
+      if (!window.matchMedia("(max-width: 899px)").matches || !(target instanceof Element)) return;
+      const fromBody = !handle.contains(target);
+      if (fromBody) {
+        if (!sheetOpen) return;
+        // Preserve scrolling inside the details and nested station lists.
+        for (let node: Element | null = target; node && node !== sheet; node = node.parentElement) {
+          if (node.scrollTop > 0) return;
+        }
+      }
+      suppressSheetClickRef.current = false;
+      const min = 60 + parseFloat(getComputedStyle(sheet).paddingBottom);
+      const max = (window.visualViewport?.height ?? window.innerHeight) * 0.76;
+      const height = sheet.getBoundingClientRect().height;
+      gesture = { x, y, height, min, max, current: height, moved: false, body: fromBody };
+    };
+    const move = (x: number, y: number, event: Event) => {
+      if (!gesture) return;
+      const dx = x - gesture.x;
+      const dy = y - gesture.y;
+      if (!gesture.moved) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+        if (Math.abs(dx) >= Math.abs(dy) || (gesture.body && dy < 0)) {
+          gesture = null;
+          return;
+        }
+        gesture.moved = true;
+        suppressSheetClickRef.current = true;
+      }
+      if (event.cancelable) event.preventDefault();
+      gesture.current = Math.max(gesture.min, Math.min(gesture.max, gesture.height - dy));
+      setSheetDragHeight(gesture.current);
+    };
+    const finish = (cancelled = false) => {
+      if (gesture?.moved && !cancelled) {
+        const delta = gesture.current - gesture.height;
+        setSheetOpen(Math.abs(delta) >= 40 ? delta > 0 : sheetOpen);
+      }
+      gesture = null;
+      setSheetDragHeight(null);
+    };
+    const touchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) { finish(true); return; }
+      start(event.touches[0].clientX, event.touches[0].clientY, event.target);
+    };
+    const touchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) { finish(true); return; }
+      move(event.touches[0].clientX, event.touches[0].clientY, event);
+    };
+    const touchEnd = () => finish();
+    const cancel = () => finish(true);
+    const pointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
+      start(event.clientX, event.clientY, event.target);
+      if (gesture) handle.setPointerCapture(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") move(event.clientX, event.clientY, event);
+    };
+    const pointerUp = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") finish();
+    };
+    sheet.addEventListener("touchstart", touchStart, { passive: true });
+    sheet.addEventListener("touchmove", touchMove, { passive: false });
+    sheet.addEventListener("touchend", touchEnd);
+    sheet.addEventListener("touchcancel", cancel);
+    handle.addEventListener("pointerdown", pointerDown);
+    handle.addEventListener("pointermove", pointerMove);
+    handle.addEventListener("pointerup", pointerUp);
+    handle.addEventListener("pointercancel", cancel);
+    return () => {
+      sheet.removeEventListener("touchstart", touchStart);
+      sheet.removeEventListener("touchmove", touchMove);
+      sheet.removeEventListener("touchend", touchEnd);
+      sheet.removeEventListener("touchcancel", cancel);
+      handle.removeEventListener("pointerdown", pointerDown);
+      handle.removeEventListener("pointermove", pointerMove);
+      handle.removeEventListener("pointerup", pointerUp);
+      handle.removeEventListener("pointercancel", cancel);
+    };
+  }, [sheetOpen]);
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Comparison states
@@ -1003,31 +1092,16 @@ export default function App() {
         </div>
       </header>
 
-      <aside className="weather-sheet" aria-label="測站觀測資訊">
+      <aside
+        ref={sheetRef}
+        className={`weather-sheet${sheetDragHeight !== null ? " sheet-dragging" : ""}`}
+        style={sheetDragHeight !== null ? { height: sheetDragHeight } : undefined}
+        aria-label="測站觀測資訊"
+      >
         <button
           className="sheet-handle"
           aria-expanded={sheetOpen}
           aria-controls="station-details"
-          onPointerDown={(event) => {
-            if (!event.isPrimary) return;
-            sheetGestureRef.current = { x: event.clientX, y: event.clientY };
-            suppressSheetClickRef.current = false;
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerUp={(event) => {
-            const start = sheetGestureRef.current;
-            sheetGestureRef.current = null;
-            if (!start) return;
-            const deltaY = event.clientY - start.y;
-            const deltaX = event.clientX - start.x;
-            suppressSheetClickRef.current = Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 8;
-            if (Math.abs(deltaY) >= 40 && Math.abs(deltaY) > Math.abs(deltaX)) {
-              setSheetOpen(deltaY < 0);
-            }
-          }}
-          onPointerCancel={() => {
-            sheetGestureRef.current = null;
-          }}
           onClick={() => {
             if (suppressSheetClickRef.current) {
               suppressSheetClickRef.current = false;

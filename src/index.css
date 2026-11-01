@@ -865,19 +865,36 @@ small {
     height: calc(60px + env(safe-area-inset-bottom, 0px));
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -4px 20px #00000026;
-    transition: height 0.25s ease;
+    overflow: hidden;
+    transition: height 0.32s cubic-bezier(0.22, 1, 0.36, 1);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .sheet-open .weather-sheet {
     height: 76dvh;
   }
   .weather-app:not(.sheet-open) .sheet-body {
+    opacity: 0;
     visibility: hidden;
-    overflow: hidden;
+    pointer-events: none;
+    transition: opacity 0.18s ease, visibility 0s linear 0.32s;
   }
   .sheet-body {
+    flex: 1;
+    min-height: 0;
     padding: 4px 16px 24px;
     gap: 12px;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.24s ease, visibility 0s;
+  }
+  .weather-sheet.sheet-dragging {
+    transition: none;
+  }
+  .weather-app .sheet-dragging .sheet-body {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: none;
   }
   .side-brand {
     display: none;
