@@ -96,6 +96,9 @@ small {
   width: 100%;
   z-index: 0;
 }
+.status-bar-glass {
+  display: none;
+}
 .map-topbar {
   position: fixed;
   z-index: 500;
@@ -779,12 +782,47 @@ small {
   .map-stage {
     inset: 0;
   }
+  .status-bar-glass {
+    display: block;
+    position: fixed;
+    inset: 0 0 auto;
+    height: calc(env(safe-area-inset-top, 0px) + 48px);
+    z-index: 490;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 18%),
+      rgb(0 0 0 / 7%) 45%,
+      transparent
+    );
+  }
+  .status-bar-glass > span {
+    position: absolute;
+    inset: 0;
+    -webkit-backdrop-filter: blur(var(--status-blur));
+    backdrop-filter: blur(var(--status-blur));
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent var(--status-fade));
+    mask-image: linear-gradient(to bottom, #000 0%, transparent var(--status-fade));
+  }
+  /* Strong blur fades first; softer layers blend into the clear map below. */
+  .status-bar-glass > span:nth-child(1) {
+    --status-blur: 2px;
+    --status-fade: 100%;
+  }
+  .status-bar-glass > span:nth-child(2) {
+    --status-blur: 6px;
+    --status-fade: 80%;
+  }
+  .status-bar-glass > span:nth-child(3) {
+    --status-blur: 14px;
+    --status-fade: 60%;
+  }
   .map-topbar {
     left: 0;
     padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 10px;
   }
   .mobile-brand {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 8px;
     background: var(--sheet);
@@ -824,7 +862,7 @@ small {
     top: auto;
     right: 0;
     width: 100%;
-    height: calc(214px + env(safe-area-inset-bottom, 0px));
+    height: calc(60px + env(safe-area-inset-bottom, 0px));
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -4px 20px #00000026;
     transition: height 0.25s ease;
@@ -832,6 +870,10 @@ small {
   }
   .sheet-open .weather-sheet {
     height: 76dvh;
+  }
+  .weather-app:not(.sheet-open) .sheet-body {
+    visibility: hidden;
+    overflow: hidden;
   }
   .sheet-body {
     padding: 4px 16px 24px;
@@ -845,7 +887,11 @@ small {
     position: relative;
     width: 100%;
     flex: none;
-    padding: 12px 0 14px;
+    height: 60px;
+    padding: 12px 0 30px;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
     border: 0;
     background: transparent;
   }
@@ -860,7 +906,7 @@ small {
   }
   .sheet-handle b {
     position: absolute;
-    top: 6px;
+    top: 27px;
     right: 12px;
     font-size: 11px;
     color: var(--ink);
@@ -905,7 +951,7 @@ small {
     font-size: 16px;
   }
   .map-tools {
-    top: 174px;
+    top: calc(122px + env(safe-area-inset-top, 0px));
     right: 12px;
   }
   .map-tools button {
@@ -917,7 +963,7 @@ small {
   .locate-button {
     position: fixed;
     right: 14px;
-    bottom: calc(228px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
   }
   .sheet-open .locate-button {
     bottom: calc(76dvh + 12px);
@@ -929,7 +975,7 @@ small {
   }
   .map-legend {
     position: fixed;
-    bottom: calc(226px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     left: 12px;
     width: 160px;
     padding: 6px 10px;
@@ -938,7 +984,7 @@ small {
     display: none;
   }
   .map-stage .leaflet-control-attribution {
-    bottom: calc(214px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
     max-width: 100vw;
     font-size: 8px !important;
   }
@@ -946,7 +992,7 @@ small {
     bottom: 76dvh;
   }
   .locate-toast {
-    top: 224px;
+    top: calc(172px + env(safe-area-inset-top, 0px));
   }
 }
 @media (prefers-color-scheme: dark) {

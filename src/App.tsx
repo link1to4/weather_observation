@@ -168,6 +168,8 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetGestureRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressSheetClickRef = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
   // Comparison states
@@ -884,7 +886,6 @@ export default function App() {
   const chooseStation = (id: string) => {
     setSelectedStationId(id);
     setSearchOpen(false);
-    setSheetOpen(true);
   };
   const realtime = selectedStationData?.realtime;
   const currentChart =
@@ -897,6 +898,12 @@ export default function App() {
         selectedStationId={selectedStationId}
         onSelectStation={chooseStation}
       />
+
+      <div className="status-bar-glass" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
 
       <header className="map-topbar">
         <div className="mobile-brand">
@@ -1000,12 +1007,39 @@ export default function App() {
         <button
           className="sheet-handle"
           aria-expanded={sheetOpen}
-          onClick={() => setSheetOpen(!sheetOpen)}
+          aria-controls="station-details"
+          onPointerDown={(event) => {
+            if (!event.isPrimary) return;
+            sheetGestureRef.current = { x: event.clientX, y: event.clientY };
+            suppressSheetClickRef.current = false;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerUp={(event) => {
+            const start = sheetGestureRef.current;
+            sheetGestureRef.current = null;
+            if (!start) return;
+            const deltaY = event.clientY - start.y;
+            const deltaX = event.clientX - start.x;
+            suppressSheetClickRef.current = Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 8;
+            if (Math.abs(deltaY) >= 40 && Math.abs(deltaY) > Math.abs(deltaX)) {
+              setSheetOpen(deltaY < 0);
+            }
+          }}
+          onPointerCancel={() => {
+            sheetGestureRef.current = null;
+          }}
+          onClick={() => {
+            if (suppressSheetClickRef.current) {
+              suppressSheetClickRef.current = false;
+              return;
+            }
+            setSheetOpen(!sheetOpen);
+          }}
         >
           <span />
-          <b>{sheetOpen ? "▾ 看地圖" : "▴ 看詳細觀測"}</b>
+          <b>{sheetOpen ? "▾ 下滑收合" : "▴ 上滑查看詳細資訊"}</b>
         </button>
-        <div className="sheet-body">
+        <div className="sheet-body" id="station-details">
           <div className="side-brand">
             <h1>
               <Sun size={25} />
