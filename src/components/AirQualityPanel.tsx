@@ -1,12 +1,13 @@
 import { AirQualityStation, AQI_LEVELS, getAqiLevel } from '../airQuality';
+import AirQualityTrend from './AirQualityTrend';
 
 export function AirQualityDetails({ station }: { station: AirQualityStation }) {
   const level = getAqiLevel(station.aqi);
-  return <section className="detail-card air-selected" aria-label="空品測站詳情">
+  return <><section className="detail-card air-selected" aria-label="空品測站詳情">
     <div className="station-heading"><h2>{station.name} 空品測站</h2><span className="tag">{station.county}</span></div>
     <div className="air-reading" style={{ background: level.color, color: level.ink }}><div><small>AQI</small><strong>{station.aqi ?? '—'}</strong></div><b>{level.label}</b></div>
     <dl className="key-values"><dt>PM2.5</dt><dd>{station.pm25 ?? '—'} μg/m³</dd><dt>發布時間</dt><dd>{station.publishTime || '—'}</dd><dt>測站代碼</dt><dd>{station.id}</dd></dl>
-  </section>;
+  </section><AirQualityTrend station={station} /></>;
 }
 
 interface Props {

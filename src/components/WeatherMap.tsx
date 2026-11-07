@@ -37,6 +37,7 @@ interface WeatherMapProps {
   airMetric?: 'aqi' | 'pm25';
   selectedAirStationId: string;
   onSelectAirStation: (id: string) => void;
+  onSelectNearbyAirStation: (id: string) => void;
   mapLayer: 'all' | 'weather' | 'air' | 'none';
 }
 
@@ -154,15 +155,19 @@ export default function WeatherMap({
   airMetric = 'aqi',
   selectedAirStationId,
   onSelectAirStation,
+  onSelectNearbyAirStation,
   mapLayer,
 }: WeatherMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const previousLayerRef = useRef(mapLayer);
+  const nearbyAirSelectionRef = useRef<string | null>(null);
   const baseTileLayerRef = useRef<L.TileLayer | null>(null);
   const topTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
   const [mapStyle, setMapStyle] = useState<"streets" | "satellite">("streets");
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [mapToolsOpen, setMapToolsOpen] = useState(false);
 
   // Track manual selections to prevent zoom loops
   const lastSelectedIdRef = useRef<string>("");
@@ -438,6 +443,24 @@ export default function WeatherMap({
     const map = mapRef.current;
     if (!map) return;
 
+    const layerChanged = previousLayerRef.current !== mapLayer;
+    previousLayerRef.current = mapLayer;
+    if (layerChanged) map.stop();
+    if (mapLayer === 'air' && (layerChanged || !selectedAirStationId)) {
+      const center = map.getCenter();
+      const nearest = findNearestAirQualityStation(airQualityStations || [], center.lat, center.lng);
+      if (nearest && nearest.station.id !== selectedAirStationId) {
+        nearbyAirSelectionRef.current = nearest.station.id;
+        onSelectNearbyAirStation(nearest.station.id);
+      }
+      return;
+    }
+    if (layerChanged) return;
+    if (nearbyAirSelectionRef.current === selectedAirStationId) {
+      nearbyAirSelectionRef.current = null;
+      return;
+    }
+
     if (selectedAirStationId) {
       const station = airQualityStations?.find(st => st.id === selectedAirStationId);
       if (station) map.setView([station.latitude, station.longitude], 10, { animate: true });
@@ -476,7 +499,7 @@ export default function WeatherMap({
         });
       }
     }
-  }, [selectedStationId, stations, airQualityStations, selectedAirStationId]);
+  }, [selectedStationId, stations, airQualityStations, selectedAirStationId, mapLayer]);
 
   // Handle locating user's position and selecting nearest weather station
   const handleLocateNearest = () => {
@@ -579,6 +602,7 @@ export default function WeatherMap({
     <div className="map-stage" role="region" aria-label="全臺氣象與空品測站地圖">
       <div ref={mapContainerRef} className="map-canvas" />
       <div className="map-tools" role="group" aria-label="地圖底圖">
+        {mapToolsOpen && <>
         <button
           aria-pressed={mapStyle === "streets"}
           onClick={() => setMapStyle("streets")}
@@ -593,7 +617,15 @@ export default function WeatherMap({
           <Layers size={15} />
           航照影像
         </button>
-        <button onClick={handleRecenter} title="回到全臺灣視角">
+        </>}
+        <button
+          onClick={() => {
+            setMapToolsOpen(!mapToolsOpen);
+            handleRecenter();
+          }}
+          aria-expanded={mapToolsOpen}
+          title="回到全臺灣視角並展開或收合底圖選項"
+        >
           <Scan size={16} />
           <span>全臺</span>
         </button>

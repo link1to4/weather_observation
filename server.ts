@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import * as cheerio from 'cheerio';
 import 'dotenv/config';
-import { parseAirQualityRecords } from './src/airQuality';
+import { parseAirQualityRecords, parseAirQualityHistory } from './src/airQuality';
 
 // Lazy initialization of Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -156,6 +156,33 @@ async function startServer() {
       return res.json({ stations });
     } catch {
       return res.status(502).json({ error: '環境部空氣品質資料暫時無法取得，請稍後重新整理。' });
+    }
+  });
+
+  const airHistoryCache = new Map<string, { points: ReturnType<typeof parseAirQualityHistory>; timestamp: number }>();
+  app.get('/api/air-quality/history', async (req, res) => {
+    const stationId = req.query.stationId;
+    if (typeof stationId !== 'string' || !/^\d{1,6}$/.test(stationId)) {
+      return res.status(400).json({ error: '請提供有效的空品測站代碼。' });
+    }
+    const apiKey = process.env.MOENV_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: '尚未設定環境部 API 金鑰。' });
+    const cached = airHistoryCache.get(stationId);
+    if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) return res.json({ points: cached.points });
+    try {
+      const url = new URL('https://data.moenv.gov.tw/api/v2/aqx_p_488');
+      url.search = new URLSearchParams({ api_key: apiKey, format: 'json', limit: '48', offset: '0', filters: `siteid,EQ,${stationId}`, sort: 'datacreationdate desc' }).toString();
+      const upstream = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!upstream.ok) throw new Error('MOENV history request failed');
+      const data = await upstream.json();
+      const records = Array.isArray(data) ? data : data?.records;
+      if (!Array.isArray(records)) throw new Error('Invalid MOENV history response');
+      const points = parseAirQualityHistory(records, stationId);
+      if (airHistoryCache.size >= 100) airHistoryCache.delete(airHistoryCache.keys().next().value);
+      airHistoryCache.set(stationId, { points, timestamp: Date.now() });
+      return res.json({ points });
+    } catch {
+      return res.status(502).json({ error: '空氣品質歷史資料暫時無法取得，請稍後重試。' });
     }
   });
 

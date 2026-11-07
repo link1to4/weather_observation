@@ -1067,6 +1067,9 @@ small {
 .combined-legend > small { font-size: 9px; color: var(--muted); }
 .combined-legend { color: var(--ink); text-align: left; }
 .combined-legend.legend-collapsed { width: auto; }
+.air-trend { margin-top: 16px; }
+.air-trend h4 { margin: 0 0 8px; font-size: 12px; }
+.air-trend-chart { width: 100%; height: 165px; }
 @media (min-width: 900px) and (max-width: 1250px) {
   .map-tools { top: 154px; }
 }

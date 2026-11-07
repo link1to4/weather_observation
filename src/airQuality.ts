@@ -25,22 +25,51 @@ export function getAqiLevel(aqi: number | null) {
     : AQI_LEVELS.find(level => aqi <= level.max)!;
 }
 
+function parseAirQualityNumber(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export interface AirQualityTrendPoint {
+  time: string;
+  aqi: number | null;
+  pm25: number | null;
+}
+
+export function parseAirQualityHistory(records: Record<string, unknown>[], stationId: string): AirQualityTrendPoint[] {
+  const observations = new Map<number, AirQualityTrendPoint>();
+  for (const record of records) {
+    if (String(record.siteid) !== stationId) continue;
+    const date = String(record.datacreationdate ?? '');
+    if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(date)) continue;
+    const timestamp = Date.parse(date.replace(' ', 'T') + '+08:00');
+    if (!Number.isFinite(timestamp)) continue;
+    observations.set(timestamp, {
+      time: new Date(timestamp).toISOString(),
+      aqi: parseAirQualityNumber(record.aqi),
+      pm25: parseAirQualityNumber(record['pm2.5']),
+    });
+  }
+  if (!observations.size) return [];
+  const latest = Math.max(...observations.keys());
+  return Array.from({ length: 24 }, (_, index) => {
+    const timestamp = latest - (23 - index) * 60 * 60 * 1000;
+    return observations.get(timestamp) ?? { time: new Date(timestamp).toISOString(), aqi: null, pm25: null };
+  });
+}
+
 export function parseAirQualityRecords(records: Record<string, unknown>[]): AirQualityStation[] {
-  const number = (value: unknown): number | null => {
-    if (value === null || value === undefined || String(value).trim() === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-  };
   return records.flatMap((record) => {
-    const latitude = number(record.latitude);
-    const longitude = number(record.longitude);
+    const latitude = parseAirQualityNumber(record.latitude);
+    const longitude = parseAirQualityNumber(record.longitude);
     if (latitude === null || longitude === null || latitude === 0 || longitude === 0 || latitude > 90 || longitude > 180) return [];
     return [{
       id: String(record.siteid ?? ''),
       name: String(record.sitename ?? ''),
       county: String(record.county ?? ''),
-      aqi: number(record.aqi),
-      pm25: number(record['pm2.5']),
+      aqi: parseAirQualityNumber(record.aqi),
+      pm25: parseAirQualityNumber(record['pm2.5']),
       status: String(record.status ?? ''),
       publishTime: String(record.publishtime ?? ''),
       latitude,

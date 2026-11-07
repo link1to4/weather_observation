@@ -1035,7 +1035,6 @@ export default function App() {
     setMapLayer(showWeather ? (showAir ? 'all' : 'weather') : (showAir ? 'air' : 'none'));
     setSearchOpen(false);
     if (!showAir) setSelectedAirStationId('');
-    else if (!showWeather && !selectedAirStationId) setSelectedAirStationId(filteredAirStations[0]?.id || airQualityStations[0]?.id || '');
   };
   const realtime = selectedStationData?.realtime;
   const currentChart =
@@ -1051,6 +1050,7 @@ export default function App() {
         airMetric={airMetric}
         selectedAirStationId={selectedAirStationId}
         onSelectAirStation={chooseAirStation}
+        onSelectNearbyAirStation={setSelectedAirStationId}
         mapLayer={mapLayer}
       />
 
