@@ -13,3 +13,5 @@ services:
         placeholder: "Enter your Gemini API Key from Google AI Studio"
       - key: CWA_API_KEY
         value: "CWA-6907C53A-8DD1-4815-86FD-4FFFD36D060D"
+      - key: MOENV_API_KEY
+        sync: false

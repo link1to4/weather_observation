@@ -23,6 +23,9 @@ import {
 } from "lucide-react";
 import { CWAResponse } from "./types";
 import WeatherMap from "./components/WeatherMap";
+import AirQuality from "./components/AirQuality";
+import AirQualityView from "./components/AirQualityView";
+import { AirQualityStation } from "./airQuality";
 
 // Regional classification of weather stations in Taiwan (Manned & Automatic)
 const REGION_MAP: Record<string, string> = {
@@ -150,9 +153,13 @@ const parseWeatherNumber = (val: any): number | null => {
 };
 
 export default function App() {
+  const [view, setView] = useState<'weather' | 'air'>('weather');
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [airQualityStations, setAirQualityStations] = useState<AirQualityStation[]>([]);
+  const [airQualityLoading, setAirQualityLoading] = useState(true);
+  const [airQualityError, setAirQualityError] = useState<string | null>(null);
   const [selectedStationId, setSelectedStationId] = useState<string>(() => {
     try {
       return localStorage.getItem("defaultStationId") || "466920";
@@ -314,7 +321,24 @@ export default function App() {
   const [aiError, setAiError] = useState<string | null>(null);
 
   // Fetch data on mount
+  const fetchAirQuality = async () => {
+    setAirQualityLoading(true);
+    setAirQualityError(null);
+    try {
+      const response = await fetch('/api/air-quality');
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error);
+      setAirQualityStations(json.stations);
+    } catch (err) {
+      setAirQualityStations([]);
+      setAirQualityError(err instanceof Error ? err.message : '空氣品質資料暫時無法取得。');
+    } finally {
+      setAirQualityLoading(false);
+    }
+  };
+
   const fetchData = async (silent = false) => {
+    void fetchAirQuality();
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -980,6 +1004,8 @@ export default function App() {
   const currentChart =
     activeTab === "hourly" ? hourlyChartData : monthlyData || [];
 
+  if (view === 'air') return <AirQualityView stations={airQualityStations} loading={airQualityLoading} error={airQualityError} onBack={() => setView('weather')} onRefresh={fetchAirQuality} />;
+
   return (
     <div className={`weather-app ${sheetOpen ? "sheet-open" : ""}`}>
       <WeatherMap
@@ -995,6 +1021,7 @@ export default function App() {
       </div>
 
       <header className="map-topbar">
+        <button className="view-switch" onClick={() => setView('air')}><Wind size={16} /> 空氣品質地圖 · AQI / PM2.5</button>
         <div className="mobile-brand">
           <Sun size={22} />
           <div>
@@ -1193,6 +1220,13 @@ export default function App() {
                   </span>
                 </div>
               </section>
+              <AirQuality
+                stations={airQualityStations}
+                latitude={realtime?.latitude}
+                longitude={realtime?.longitude}
+                loading={airQualityLoading}
+                error={airQualityError}
+              />
               <section className="detail-card">
                 <h3>測站資訊</h3>
                 <dl className="key-values">
@@ -1563,6 +1597,7 @@ export default function App() {
               >
                 交通部中央氣象署
               </a>
+              、<a href="https://data.moenv.gov.tw/dataset/detail/AQX_P_432" target="_blank" rel="noreferrer">環境部環境資料開放平臺</a>
               。觀測資料可能延遲，日報為完整單日統計。
             </p>
             <span className="mono">TAIWAN WEATHER OBSERVATION</span>

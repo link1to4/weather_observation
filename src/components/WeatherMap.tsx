@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LocateFixed, Map, Layers, Scan } from "lucide-react";
+import { AirQualityStation, getAqiLevel, findNearestAirQualityStation } from '../airQuality';
 
 interface StationItem {
   id: string;
@@ -32,6 +33,8 @@ interface WeatherMapProps {
   stations: StationItem[];
   selectedStationId: string;
   onSelectStation: (id: string) => void;
+  airQualityStations?: AirQualityStation[];
+  airMetric?: 'aqi' | 'pm25';
 }
 
 const FALLBACK_COORDINATES: Record<string, [number, number]> = {
@@ -144,6 +147,8 @@ export default function WeatherMap({
   stations,
   selectedStationId,
   onSelectStation,
+  airQualityStations,
+  airMetric = 'aqi',
 }: WeatherMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -327,6 +332,28 @@ export default function WeatherMap({
       markersGroup.addLayer(userMarker);
     }
 
+    if (airQualityStations) {
+      airQualityStations.forEach(station => {
+        const level = getAqiLevel(station.aqi);
+        const value = airMetric === 'aqi' ? station.aqi : station.pm25;
+        const selected = station.id === selectedStationId;
+        const marker = L.marker([station.latitude, station.longitude], {
+          icon: L.divIcon({
+            className: `air-map-marker${selected ? ' selected' : ''}`,
+            html: `<span style="background:${level.color};color:${level.ink}">${value ?? '—'}</span>`,
+            iconSize: [36, 36], iconAnchor: [18, 18],
+          }),
+          title: `${station.county} ${station.name} · ${airMetric === 'aqi' ? 'AQI' : 'PM2.5'} ${value ?? '無資料'} · ${level.label}`,
+        });
+        const tooltip = document.createElement('div');
+        tooltip.textContent = `${station.name} · ${level.label} · AQI ${station.aqi ?? '—'} / PM2.5 ${station.pm25 ?? '—'} μg/m³`;
+        marker.bindTooltip(tooltip, { direction: 'top', offset: [0, -16] });
+        marker.on('click', () => onSelectStation(station.id));
+        markersGroup.addLayer(marker);
+      });
+      return;
+    }
+
     stations.forEach((station) => {
       // Resolve coordinates
       const lat =
@@ -398,12 +425,24 @@ export default function WeatherMap({
 
       markersGroup.addLayer(marker);
     });
-  }, [stations, selectedStationId, mapStyle, userLocation]);
+  }, [stations, selectedStationId, mapStyle, userLocation, airQualityStations, airMetric]);
 
   // 4. Smooth Panning on Station Change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedStationId) return;
+    if (!map) return;
+
+    if (airQualityStations) {
+      const station = airQualityStations.find(st => st.id === selectedStationId);
+      if (station) map.setView([station.latitude, station.longitude], 10, { animate: true });
+      else if (airQualityStations.length) {
+        map.fitBounds(L.latLngBounds(airQualityStations.map(st => [st.latitude, st.longitude])), {
+          paddingTopLeft: [40, 140], paddingBottomRight: [40, 100], maxZoom: 11,
+        });
+      }
+      return;
+    }
+    if (!selectedStationId) return;
 
     const selectedStation = stations.find((st) => st.id === selectedStationId);
     if (!selectedStation) return;
@@ -436,7 +475,7 @@ export default function WeatherMap({
         });
       }
     }
-  }, [selectedStationId, stations]);
+  }, [selectedStationId, stations, airQualityStations]);
 
   // Handle locating user's position and selecting nearest weather station
   const handleLocateNearest = () => {
@@ -451,6 +490,15 @@ export default function WeatherMap({
       (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
+
+        if (airQualityStations) {
+          const nearest = findNearestAirQualityStation(airQualityStations, latitude, longitude);
+          if (nearest) onSelectStation(nearest.station.id);
+          setLocateStatus(nearest ? { type: 'success', text: `最近空品測站：${nearest.station.name}` } : { type: 'error', text: '目前無可用的空品測站' });
+          setLocating(false);
+          setTimeout(() => setLocateStatus(null), 4000);
+          return;
+        }
 
         if (stations.length === 0) {
           setLocating(false);
@@ -527,7 +575,7 @@ export default function WeatherMap({
   };
 
   return (
-    <div className="map-stage" role="region" aria-label="全臺氣象測站地圖">
+    <div className="map-stage" role="region" aria-label={airQualityStations ? '全臺空品測站地圖' : '全臺氣象測站地圖'}>
       <div ref={mapContainerRef} className="map-canvas" />
       <div className="map-tools" role="group" aria-label="地圖底圖">
         <button
@@ -563,7 +611,7 @@ export default function WeatherMap({
           {locateStatus.text}
         </div>
       )}
-      <div className="map-legend">
+      {!airQualityStations && <div className="map-legend">
         <span>氣溫 °C</span>
         <div className="temperature-gradient" />
         <div className="legend-ticks">
@@ -573,7 +621,7 @@ export default function WeatherMap({
           <span>30</span>
           <span>38+</span>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

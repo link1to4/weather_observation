@@ -3,6 +3,8 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import * as cheerio from 'cheerio';
+import 'dotenv/config';
+import { parseAirQualityRecords } from './src/airQuality';
 
 // Lazy initialization of Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -130,6 +132,32 @@ async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
+
+  let airQualityCache: { stations: ReturnType<typeof parseAirQualityRecords>; timestamp: number } | null = null;
+  app.get('/api/air-quality', async (_req, res) => {
+    const apiKey = process.env.MOENV_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: '尚未設定環境部 API 金鑰，請設定 MOENV_API_KEY。' });
+    }
+    if (airQualityCache && Date.now() - airQualityCache.timestamp < 5 * 60 * 1000) {
+      return res.json({ stations: airQualityCache.stations });
+    }
+    try {
+      const url = new URL('https://data.moenv.gov.tw/api/v2/aqx_p_432');
+      url.search = new URLSearchParams({ api_key: apiKey, format: 'json', limit: '1000', offset: '0' }).toString();
+      const upstream = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!upstream.ok) throw new Error('MOENV request failed');
+      const data = await upstream.json();
+      const records = Array.isArray(data) ? data : data?.records;
+      if (!Array.isArray(records)) throw new Error('Invalid MOENV response');
+      const stations = parseAirQualityRecords(records);
+      if (!stations.length) throw new Error('No MOENV stations');
+      airQualityCache = { stations, timestamp: Date.now() };
+      return res.json({ stations });
+    } catch {
+      return res.status(502).json({ error: '環境部空氣品質資料暫時無法取得，請稍後重新整理。' });
+    }
+  });
 
   // In-memory tile cache to ensure instant loading and zero upstream throttling
   const tileCache = new Map<string, { buffer: Buffer; contentType: string; timestamp: number }>();
