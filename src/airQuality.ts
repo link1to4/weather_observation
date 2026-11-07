@@ -31,6 +31,14 @@ function parseAirQualityNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function parseObservedAqi(record: Record<string, unknown>): number | null {
+  const aqi = parseAirQualityNumber(record.aqi);
+  const pollutants = ['so2', 'co', 'o3', 'o3_8hr', 'pm10', 'pm2.5', 'no2'];
+  if (aqi === 0 && !String(record.status ?? '').trim()
+    && pollutants.every(field => parseAirQualityNumber(record[field]) === null)) return null;
+  return aqi;
+}
+
 export interface AirQualityTrendPoint {
   time: string;
   aqi: number | null;
@@ -47,7 +55,7 @@ export function parseAirQualityHistory(records: Record<string, unknown>[], stati
     if (!Number.isFinite(timestamp)) continue;
     observations.set(timestamp, {
       time: new Date(timestamp).toISOString(),
-      aqi: parseAirQualityNumber(record.aqi),
+      aqi: parseObservedAqi(record),
       pm25: parseAirQualityNumber(record['pm2.5']),
     });
   }
@@ -68,7 +76,7 @@ export function parseAirQualityRecords(records: Record<string, unknown>[]): AirQ
       id: String(record.siteid ?? ''),
       name: String(record.sitename ?? ''),
       county: String(record.county ?? ''),
-      aqi: parseAirQualityNumber(record.aqi),
+      aqi: parseObservedAqi(record),
       pm25: parseAirQualityNumber(record['pm2.5']),
       status: String(record.status ?? ''),
       publishTime: String(record.publishtime ?? ''),

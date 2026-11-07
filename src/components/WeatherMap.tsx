@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from 'react-dom';
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LocateFixed, Map, Layers, Scan } from "lucide-react";
@@ -39,6 +40,7 @@ interface WeatherMapProps {
   onSelectAirStation: (id: string) => void;
   onSelectNearbyAirStation: (id: string) => void;
   mapLayer: 'all' | 'weather' | 'air' | 'none';
+  mapToolsContainer: HTMLDivElement | null;
 }
 
 const FALLBACK_COORDINATES: Record<string, [number, number]> = {
@@ -157,6 +159,7 @@ export default function WeatherMap({
   onSelectAirStation,
   onSelectNearbyAirStation,
   mapLayer,
+  mapToolsContainer,
 }: WeatherMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -346,8 +349,8 @@ export default function WeatherMap({
 
     if (airQualityStations) {
       airQualityStations.forEach(station => {
-        const level = getAqiLevel(station.aqi);
         const value = airMetric === 'aqi' ? station.aqi : station.pm25;
+        const level = getAqiLevel(value === null ? null : station.aqi);
         const selected = station.id === selectedAirStationId;
         const marker = L.marker([station.latitude, station.longitude], {
           icon: L.divIcon({
@@ -501,7 +504,7 @@ export default function WeatherMap({
     }
   }, [selectedStationId, stations, airQualityStations, selectedAirStationId, mapLayer]);
 
-  // Handle locating user's position and selecting nearest weather station
+  // Locate the user without opening station details.
   const handleLocateNearest = () => {
     if (!navigator.geolocation) {
       setLocateStatus({ type: "error", text: "您的瀏覽器不支援定位功能" });
@@ -514,10 +517,14 @@ export default function WeatherMap({
       (position) => {
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
+        mapRef.current?.closePopup();
+        mapRef.current?.setView([latitude, longitude], 11, {
+          animate: true,
+          duration: 1.2,
+        });
 
         if (mapLayer === 'air') {
           const nearest = findNearestAirQualityStation(airQualityStations || [], latitude, longitude);
-          if (nearest) onSelectAirStation(nearest.station.id);
           setLocateStatus(nearest ? { type: 'success', text: `最近空品測站：${nearest.station.name}` } : { type: 'error', text: '目前無可用的空品測站' });
           setLocating(false);
           setTimeout(() => setLocateStatus(null), 4000);
@@ -551,17 +558,6 @@ export default function WeatherMap({
             }
           }
         });
-
-        // Select the nearest station
-        onSelectStation(nearestStation.id);
-
-        // Center on the user's location
-        if (mapRef.current) {
-          mapRef.current.setView([latitude, longitude], 11, {
-            animate: true,
-            duration: 1.2,
-          });
-        }
 
         setLocateStatus({
           type: "success",
@@ -601,8 +597,8 @@ export default function WeatherMap({
   return (
     <div className="map-stage" role="region" aria-label="全臺氣象與空品測站地圖">
       <div ref={mapContainerRef} className="map-canvas" />
-      <div className="map-tools" role="group" aria-label="地圖底圖">
-        {mapToolsOpen && <>
+      {mapToolsContainer && createPortal(<div className="map-tools" role="group" aria-label="地圖底圖">
+        {mapToolsOpen && <div className="map-base-options">
         <button
           aria-pressed={mapStyle === "streets"}
           onClick={() => setMapStyle("streets")}
@@ -617,7 +613,7 @@ export default function WeatherMap({
           <Layers size={15} />
           航照影像
         </button>
-        </>}
+        </div>}
         <button
           onClick={() => {
             setMapToolsOpen(!mapToolsOpen);
@@ -629,12 +625,12 @@ export default function WeatherMap({
           <Scan size={16} />
           <span>全臺</span>
         </button>
-      </div>
+      </div>, mapToolsContainer)}
       <button
         className={`locate-button ${locating ? "spin-icon" : ""}`}
         onClick={handleLocateNearest}
         disabled={locating}
-        aria-label="定位目前位置並選擇最近測站"
+        aria-label="定位目前位置"
         title="定位我的位置"
       >
         <LocateFixed size={32} />

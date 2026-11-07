@@ -156,6 +156,7 @@ export default function App() {
   const [selectedAirStationId, setSelectedAirStationId] = useState('');
   const [airMetric, setAirMetric] = useState<'aqi' | 'pm25'>('aqi');
   const [mapLayer, setMapLayer] = useState<'all' | 'weather' | 'air' | 'none'>('all');
+  const [mapToolsContainer, setMapToolsContainer] = useState<HTMLDivElement | null>(null);
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +171,6 @@ export default function App() {
     }
   }); // Default to Taipei (466920) or last saved station
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<"all" | "manned" | "auto">(
     "all",
   );
@@ -755,7 +755,7 @@ export default function App() {
     });
   }, [data]);
 
-  // Filter stations list by type, region & search query
+  // Filter stations list by type and search query
   const filteredStations = useMemo(() => {
     if (mapLayer === 'air' || mapLayer === 'none') return [];
     return stationsList.filter((st) => {
@@ -764,17 +764,14 @@ export default function App() {
         st.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
         st.id.includes(searchQuery);
 
-      const matchesRegion =
-        selectedRegion === "all" || st.region === selectedRegion;
-
       const matchesType =
         selectedType === "all" ||
         (selectedType === "manned" && st.attribute === "署屬有人氣象站") ||
         (selectedType === "auto" && st.attribute === "署屬自動氣象站");
 
-      return matchesSearch && matchesRegion && matchesType;
+      return matchesSearch && matchesType;
     });
-  }, [stationsList, searchQuery, selectedRegion, selectedType, mapLayer]);
+  }, [stationsList, searchQuery, selectedType, mapLayer]);
 
   // Find the currently selected station details in the API payload
   const selectedStationData = useMemo(() => {
@@ -1017,16 +1014,8 @@ export default function App() {
   const selectedAirStation = airQualityStations.find(st => st.id === selectedAirStationId);
   const filteredAirStations = useMemo(() => {
     if (mapLayer === 'weather' || mapLayer === 'none') return [];
-    const counties: Record<string, string[]> = {
-      '北部地區': ['基隆市', '臺北市', '新北市', '桃園市', '新竹市', '新竹縣', '宜蘭縣'],
-      '中部地區': ['苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣'],
-      '南部地區': ['嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣'],
-      '東部地區': ['花蓮縣', '臺東縣'],
-      '高山離島': ['澎湖縣', '金門縣', '連江縣'],
-    };
-    return airQualityStations.filter(st => `${st.name}${st.county}${st.id}`.includes(searchQuery.trim())
-      && (selectedRegion === 'all' || counties[selectedRegion]?.includes(st.county)));
-  }, [airQualityStations, searchQuery, selectedRegion, mapLayer]);
+    return airQualityStations.filter(st => `${st.name}${st.county}${st.id}`.includes(searchQuery.trim()));
+  }, [airQualityStations, searchQuery, mapLayer]);
   const toggleMapLayer = (layer: 'weather' | 'air') => {
     const weather = mapLayer === 'all' || mapLayer === 'weather';
     const air = mapLayer === 'all' || mapLayer === 'air';
@@ -1052,6 +1041,7 @@ export default function App() {
         onSelectAirStation={chooseAirStation}
         onSelectNearbyAirStation={setSelectedAirStationId}
         mapLayer={mapLayer}
+        mapToolsContainer={mapToolsContainer}
       />
 
       <div className="status-bar-glass" aria-hidden="true">
@@ -1068,6 +1058,7 @@ export default function App() {
             <span>臺灣即時氣象觀測地圖</span>
           </div>
         </div>
+        <div className={`map-controls${searchExpanded ? ' search-expanded' : ''}`}>
         <div className="search-wrap" role="search">
           <form
             className={`search-form${searchExpanded ? '' : ' search-collapsed'}`}
@@ -1152,39 +1143,10 @@ export default function App() {
           <button aria-label="空品測站" aria-pressed={mapLayer === 'all' || mapLayer === 'air'} onClick={() => toggleMapLayer('air')}>■ 空品</button>
           {(mapLayer === 'all' || mapLayer === 'air') && <>
             <button aria-pressed={airMetric === 'aqi'} onClick={() => setAirMetric('aqi')}>AQI</button>
-            <button aria-pressed={airMetric === 'pm25'} onClick={() => setAirMetric('pm25')}>PM2.5 <small>μg/m³</small></button>
+            <button aria-pressed={airMetric === 'pm25'} onClick={() => setAirMetric('pm25')}>PM2.5</button>
           </>}
         </div>
-        <div className="filter-chips" role="group" aria-label="地區篩選">
-          {[
-            "all",
-            "北部地區",
-            "中部地區",
-            "南部地區",
-            "東部地區",
-            "高山離島",
-          ].map((region, index) => (
-            <button
-              className="filter-chip"
-              key={region}
-              aria-pressed={selectedRegion === region}
-              onClick={() => setSelectedRegion(region)}
-            >
-              <i
-                style={{
-                  background: [
-                    "#0d8f84",
-                    "#1d4ed8",
-                    "#c99a00",
-                    "#d23a2e",
-                    "#2f8a4e",
-                    "#7a3fc4",
-                  ][index],
-                }}
-              />
-              {region === "all" ? "全臺測站" : region.replace("地區", "")}
-            </button>
-          ))}
+        <div className="map-tools-slot" ref={setMapToolsContainer} />
         </div>
       </header>
 

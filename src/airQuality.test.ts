@@ -69,3 +69,13 @@ test('history excludes invalid pollutant values and handles empty or unrelated d
   assert.deepEqual(parseAirQualityHistory(records, '13'), []);
   assert.deepEqual(parseAirQualityHistory([], '31'), []);
 });
+
+test('station 88 placeholder AQI zero with no status or pollutant observations is missing', () => {
+  const missing = { siteid: '88', sitename: '臺灣大道', latitude: '24.1589', longitude: '120.65671', aqi: '0', status: '', 'pm2.5': '', so2: '', co: '', o3: '', o3_8hr: '', pm10: '', no2: '' };
+  assert.equal(parseAirQualityRecords([missing])[0].aqi, null);
+  assert.equal(parseAirQualityRecords([missing])[0].pm25, null);
+  assert.equal(parseAirQualityRecords([{ ...missing, status: '良好' }])[0].aqi, 0);
+  assert.equal(parseAirQualityRecords([{ ...missing, 'pm2.5': '0' }])[0].aqi, 0);
+  assert.equal(parseAirQualityRecords([{ ...missing, co: '0' }])[0].aqi, 0);
+  assert.equal(parseAirQualityHistory([{ ...missing, datacreationdate: '2026-11-07 21:00' }], '88').at(-1)?.aqi, null);
+});

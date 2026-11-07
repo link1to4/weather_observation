@@ -30,7 +30,7 @@ export function AirQualityOverview({ stations, selectedId, metric, loading, erro
     <button className="outline-button" onClick={onRefresh} disabled={loading}>{loading ? '正在更新空品資料…' : '更新空品資料'}</button>
     <h3 className="section-title">空品測站 <small>{stations.length} 站</small></h3>
     <div className="station-list">
-      {stations.map(st => { const state = getAqiLevel(st.aqi); return <button className="air-station-row" key={st.id} aria-pressed={selectedId === st.id} onClick={() => onSelect(st.id)}><span className="air-list-value" style={{ background: state.color, color: state.ink }}>{metric === 'aqi' ? st.aqi ?? '—' : st.pm25 ?? '—'}</span><span><b>{st.name}</b><small>{st.county} · {state.label}</small></span><span className="air-list-unit">{metric === 'aqi' ? 'AQI' : 'μg/m³'}</span></button>; })}
+      {stations.map(st => { const value = metric === 'aqi' ? st.aqi : st.pm25; const state = getAqiLevel(value === null ? null : st.aqi); return <button className="air-station-row" key={st.id} aria-pressed={selectedId === st.id} onClick={() => onSelect(st.id)}><span className="air-list-value" style={{ background: state.color, color: state.ink }}>{value ?? '—'}</span><span><b>{st.name}</b><small>{st.county} · {state.label}</small></span><span className="air-list-unit">{metric === 'aqi' ? 'AQI' : 'μg/m³'}</span></button>; })}
       {!loading && !stations.length && <p className="empty">沒有符合條件的空品測站。</p>}
     </div>
   </section>;
