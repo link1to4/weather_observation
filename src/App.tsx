@@ -24,7 +24,7 @@ import {
 import { CWAResponse } from "./types";
 import WeatherMap from "./components/WeatherMap";
 import AirQuality from "./components/AirQuality";
-import AirQualityView from "./components/AirQualityView";
+import { AirQualityDetails, AirQualityOverview } from "./components/AirQualityPanel";
 import { AirQualityStation } from "./airQuality";
 
 // Regional classification of weather stations in Taiwan (Manned & Automatic)
@@ -153,7 +153,9 @@ const parseWeatherNumber = (val: any): number | null => {
 };
 
 export default function App() {
-  const [view, setView] = useState<'weather' | 'air'>('weather');
+  const [selectedAirStationId, setSelectedAirStationId] = useState('');
+  const [airMetric, setAirMetric] = useState<'aqi' | 'pm25'>('aqi');
+  const [mapLayer, setMapLayer] = useState<'all' | 'weather' | 'air' | 'none'>('all');
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +269,8 @@ export default function App() {
     };
   }, [sheetOpen]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
 
   // Comparison states
   const [comparedStationIds, setComparedStationIds] = useState<string[]>(() => {
@@ -753,6 +757,7 @@ export default function App() {
 
   // Filter stations list by type, region & search query
   const filteredStations = useMemo(() => {
+    if (mapLayer === 'air' || mapLayer === 'none') return [];
     return stationsList.filter((st) => {
       const matchesSearch =
         st.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -769,7 +774,7 @@ export default function App() {
 
       return matchesSearch && matchesRegion && matchesType;
     });
-  }, [stationsList, searchQuery, selectedRegion, selectedType]);
+  }, [stationsList, searchQuery, selectedRegion, selectedType, mapLayer]);
 
   // Find the currently selected station details in the API payload
   const selectedStationData = useMemo(() => {
@@ -997,21 +1002,56 @@ export default function App() {
       : "—";
   const chartColors = ["#0d8f84", "#d23a2e", "#1d4ed8", "#b07800", "#7a3fc4"];
   const chooseStation = (id: string) => {
+    setSelectedAirStationId('');
     setSelectedStationId(id);
     setSearchOpen(false);
+    setSheetOpen(true);
+    sheetRef.current?.querySelector('.sheet-body')?.scrollTo({ top: 0 });
+  };
+  const chooseAirStation = (id: string) => {
+    setSelectedAirStationId(id);
+    setSearchOpen(false);
+    setSheetOpen(true);
+    sheetRef.current?.querySelector('.sheet-body')?.scrollTo({ top: 0 });
+  };
+  const selectedAirStation = airQualityStations.find(st => st.id === selectedAirStationId);
+  const filteredAirStations = useMemo(() => {
+    if (mapLayer === 'weather' || mapLayer === 'none') return [];
+    const counties: Record<string, string[]> = {
+      '北部地區': ['基隆市', '臺北市', '新北市', '桃園市', '新竹市', '新竹縣', '宜蘭縣'],
+      '中部地區': ['苗栗縣', '臺中市', '彰化縣', '南投縣', '雲林縣'],
+      '南部地區': ['嘉義市', '嘉義縣', '臺南市', '高雄市', '屏東縣'],
+      '東部地區': ['花蓮縣', '臺東縣'],
+      '高山離島': ['澎湖縣', '金門縣', '連江縣'],
+    };
+    return airQualityStations.filter(st => `${st.name}${st.county}${st.id}`.includes(searchQuery.trim())
+      && (selectedRegion === 'all' || counties[selectedRegion]?.includes(st.county)));
+  }, [airQualityStations, searchQuery, selectedRegion, mapLayer]);
+  const toggleMapLayer = (layer: 'weather' | 'air') => {
+    const weather = mapLayer === 'all' || mapLayer === 'weather';
+    const air = mapLayer === 'all' || mapLayer === 'air';
+    const showWeather = layer === 'weather' ? !weather : weather;
+    const showAir = layer === 'air' ? !air : air;
+    setMapLayer(showWeather ? (showAir ? 'all' : 'weather') : (showAir ? 'air' : 'none'));
+    setSearchOpen(false);
+    if (!showAir) setSelectedAirStationId('');
+    else if (!showWeather && !selectedAirStationId) setSelectedAirStationId(filteredAirStations[0]?.id || airQualityStations[0]?.id || '');
   };
   const realtime = selectedStationData?.realtime;
   const currentChart =
     activeTab === "hourly" ? hourlyChartData : monthlyData || [];
 
-  if (view === 'air') return <AirQualityView stations={airQualityStations} loading={airQualityLoading} error={airQualityError} onBack={() => setView('weather')} onRefresh={fetchAirQuality} />;
-
   return (
     <div className={`weather-app ${sheetOpen ? "sheet-open" : ""}`}>
       <WeatherMap
         stations={filteredStations}
-        selectedStationId={selectedStationId}
+        selectedStationId={selectedAirStationId ? '' : selectedStationId}
         onSelectStation={chooseStation}
+        airQualityStations={filteredAirStations}
+        airMetric={airMetric}
+        selectedAirStationId={selectedAirStationId}
+        onSelectAirStation={chooseAirStation}
+        mapLayer={mapLayer}
       />
 
       <div className="status-bar-glass" aria-hidden="true">
@@ -1021,7 +1061,6 @@ export default function App() {
       </div>
 
       <header className="map-topbar">
-        <button className="view-switch" onClick={() => setView('air')}><Wind size={16} /> 空氣品質地圖 · AQI / PM2.5</button>
         <div className="mobile-brand">
           <Sun size={22} />
           <div>
@@ -1031,38 +1070,59 @@ export default function App() {
         </div>
         <div className="search-wrap" role="search">
           <form
-            className="search-form"
+            className={`search-form${searchExpanded ? '' : ' search-collapsed'}`}
             onSubmit={(event) => {
               event.preventDefault();
               if (filteredStations[0]) chooseStation(filteredStations[0].id);
+              else if (filteredAirStations[0]) chooseAirStation(filteredAirStations[0].id);
             }}
           >
-            <Search size={19} aria-hidden="true" />
+            <button
+              ref={searchToggleRef}
+              type="button"
+              className="search-toggle"
+              aria-label={searchExpanded ? '收合搜尋' : '展開搜尋'}
+              aria-expanded={searchExpanded}
+              onClick={() => {
+                setSearchExpanded(!searchExpanded);
+                setSearchOpen(false);
+              }}
+            ><Search size={19} aria-hidden="true" /></button>
+            {searchExpanded && <>
             <input
+              autoFocus
               aria-label="搜尋測站"
               type="search"
-              placeholder="搜尋測站：臺北、阿里山、或測站代碼"
+              placeholder="搜尋氣象／空品測站、縣市或代碼"
               value={searchQuery}
-              onFocus={() => setSearchOpen(true)}
+              onFocus={() => {
+                setSearchOpen(true);
+                setSheetOpen(false);
+              }}
               onChange={(event) => {
                 setSearchQuery(event.target.value);
                 setSearchOpen(true);
               }}
               onKeyDown={(event) => {
-                if (event.key === "Escape") setSearchOpen(false);
+                if (event.key === "Escape") {
+                  setSearchOpen(false);
+                  setSearchExpanded(false);
+                  searchToggleRef.current?.focus();
+                }
               }}
             />
             <button type="submit">查詢</button>
+            </>}
           </form>
-          {searchOpen && (
+          {searchExpanded && searchOpen && (
             <div className="search-results">
               <div className="results-heading">
-                <span>符合條件的測站 · {filteredStations.length}</span>
+                <span>氣象 {filteredStations.length} 站 · 空品 {filteredAirStations.length} 站</span>
                 <button type="button" onClick={() => setSearchOpen(false)}>
                   關閉
                 </button>
               </div>
-              {filteredStations.length === 0 ? (
+              {filteredStations.length === 0 && filteredAirStations.length === 0 ? (
                 <p className="empty">找不到測站，請調整關鍵字或篩選條件。</p>
               ) : (
                 filteredStations.map((station) => (
@@ -1074,7 +1134,7 @@ export default function App() {
                     <span>
                       <b>{station.name}</b>
                       <small>
-                        {station.region} · {station.id}
+                        氣象站 · {station.region} · {station.id}
                       </small>
                     </span>
                     <strong>
@@ -1083,8 +1143,17 @@ export default function App() {
                   </button>
                 ))
               )}
+              {filteredAirStations.map(station => <button className="search-result" key={`air-${station.id}`} onClick={() => chooseAirStation(station.id)}><span><b>{station.name}</b><small>空品站 · {station.county} · {station.id}</small></span><strong>AQI {station.aqi ?? '—'}</strong></button>)}
             </div>
           )}
+        </div>
+        <div className="air-metric-toggle" role="group" aria-label="空品顯示數值">
+          <button aria-label="氣象測站" aria-pressed={mapLayer === 'all' || mapLayer === 'weather'} onClick={() => toggleMapLayer('weather')}>● 氣象</button>
+          <button aria-label="空品測站" aria-pressed={mapLayer === 'all' || mapLayer === 'air'} onClick={() => toggleMapLayer('air')}>■ 空品</button>
+          {(mapLayer === 'all' || mapLayer === 'air') && <>
+            <button aria-pressed={airMetric === 'aqi'} onClick={() => setAirMetric('aqi')}>AQI</button>
+            <button aria-pressed={airMetric === 'pm25'} onClick={() => setAirMetric('pm25')}>PM2.5 <small>μg/m³</small></button>
+          </>}
         </div>
         <div className="filter-chips" role="group" aria-label="地區篩選">
           {[
@@ -1144,9 +1213,9 @@ export default function App() {
           <div className="side-brand">
             <h1>
               <Sun size={25} />
-              全台即時氣溫
+              全臺氣象與空氣品質
             </h1>
-            <p>臺灣即時氣象觀測地圖 · 中央氣象署公開資料</p>
+            <p>氣溫圓點與空品方塊 · 氣象署／環境部開放資料</p>
           </div>
           <button
             className="update-badge"
@@ -1177,7 +1246,8 @@ export default function App() {
             </div>
           )}
 
-          {selectedStationData && (
+          {selectedAirStation && <AirQualityDetails station={selectedAirStation} />}
+          {!selectedAirStation && selectedStationData && (
             <>
               <section className="station-status">
                 <div className="station-heading">
@@ -1505,7 +1575,7 @@ export default function App() {
               <p className="muted">選擇測站後，按「加入溫度比較」即可比較。</p>
             )}
           </section>
-          {selectedStationData && (
+          {!selectedAirStation && selectedStationData && (
             <section className="detail-card">
               <h3>AI 氣候趨勢分析</h3>
               <p className="muted">依據目前測站近一個月的氣溫資料產生分析。</p>
@@ -1529,6 +1599,7 @@ export default function App() {
               {aiAnalysis && <p className="analysis-copy">{aiAnalysis}</p>}
             </section>
           )}
+          <AirQualityOverview stations={filteredAirStations} selectedId={selectedAirStationId} metric={airMetric} loading={airQualityLoading} error={airQualityError} onSelect={chooseAirStation} onRefresh={fetchAirQuality} />
           <section className="station-browser">
             <h3 className="section-title">
               測站列表 <small>{filteredStations.length} 站</small>

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LocateFixed, Map, Layers, Scan } from "lucide-react";
-import { AirQualityStation, getAqiLevel, findNearestAirQualityStation } from '../airQuality';
+import { AirQualityStation, getAqiLevel, AQI_LEVELS, findNearestAirQualityStation } from '../airQuality';
 
 interface StationItem {
   id: string;
@@ -35,6 +35,9 @@ interface WeatherMapProps {
   onSelectStation: (id: string) => void;
   airQualityStations?: AirQualityStation[];
   airMetric?: 'aqi' | 'pm25';
+  selectedAirStationId: string;
+  onSelectAirStation: (id: string) => void;
+  mapLayer: 'all' | 'weather' | 'air' | 'none';
 }
 
 const FALLBACK_COORDINATES: Record<string, [number, number]> = {
@@ -149,6 +152,9 @@ export default function WeatherMap({
   onSelectStation,
   airQualityStations,
   airMetric = 'aqi',
+  selectedAirStationId,
+  onSelectAirStation,
+  mapLayer,
 }: WeatherMapProps) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -156,6 +162,7 @@ export default function WeatherMap({
   const topTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
   const [mapStyle, setMapStyle] = useState<"streets" | "satellite">("streets");
+  const [legendOpen, setLegendOpen] = useState(true);
 
   // Track manual selections to prevent zoom loops
   const lastSelectedIdRef = useRef<string>("");
@@ -336,7 +343,7 @@ export default function WeatherMap({
       airQualityStations.forEach(station => {
         const level = getAqiLevel(station.aqi);
         const value = airMetric === 'aqi' ? station.aqi : station.pm25;
-        const selected = station.id === selectedStationId;
+        const selected = station.id === selectedAirStationId;
         const marker = L.marker([station.latitude, station.longitude], {
           icon: L.divIcon({
             className: `air-map-marker${selected ? ' selected' : ''}`,
@@ -348,10 +355,9 @@ export default function WeatherMap({
         const tooltip = document.createElement('div');
         tooltip.textContent = `${station.name} · ${level.label} · AQI ${station.aqi ?? '—'} / PM2.5 ${station.pm25 ?? '—'} μg/m³`;
         marker.bindTooltip(tooltip, { direction: 'top', offset: [0, -16] });
-        marker.on('click', () => onSelectStation(station.id));
+        marker.on('click', () => onSelectAirStation(station.id));
         markersGroup.addLayer(marker);
       });
-      return;
     }
 
     stations.forEach((station) => {
@@ -425,21 +431,16 @@ export default function WeatherMap({
 
       markersGroup.addLayer(marker);
     });
-  }, [stations, selectedStationId, mapStyle, userLocation, airQualityStations, airMetric]);
+  }, [stations, selectedStationId, mapStyle, userLocation, airQualityStations, airMetric, selectedAirStationId]);
 
   // 4. Smooth Panning on Station Change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (airQualityStations) {
-      const station = airQualityStations.find(st => st.id === selectedStationId);
+    if (selectedAirStationId) {
+      const station = airQualityStations?.find(st => st.id === selectedAirStationId);
       if (station) map.setView([station.latitude, station.longitude], 10, { animate: true });
-      else if (airQualityStations.length) {
-        map.fitBounds(L.latLngBounds(airQualityStations.map(st => [st.latitude, st.longitude])), {
-          paddingTopLeft: [40, 140], paddingBottomRight: [40, 100], maxZoom: 11,
-        });
-      }
       return;
     }
     if (!selectedStationId) return;
@@ -475,7 +476,7 @@ export default function WeatherMap({
         });
       }
     }
-  }, [selectedStationId, stations, airQualityStations]);
+  }, [selectedStationId, stations, airQualityStations, selectedAirStationId]);
 
   // Handle locating user's position and selecting nearest weather station
   const handleLocateNearest = () => {
@@ -491,9 +492,9 @@ export default function WeatherMap({
         const { latitude, longitude } = position.coords;
         setUserLocation([latitude, longitude]);
 
-        if (airQualityStations) {
-          const nearest = findNearestAirQualityStation(airQualityStations, latitude, longitude);
-          if (nearest) onSelectStation(nearest.station.id);
+        if (mapLayer === 'air') {
+          const nearest = findNearestAirQualityStation(airQualityStations || [], latitude, longitude);
+          if (nearest) onSelectAirStation(nearest.station.id);
           setLocateStatus(nearest ? { type: 'success', text: `最近空品測站：${nearest.station.name}` } : { type: 'error', text: '目前無可用的空品測站' });
           setLocating(false);
           setTimeout(() => setLocateStatus(null), 4000);
@@ -575,7 +576,7 @@ export default function WeatherMap({
   };
 
   return (
-    <div className="map-stage" role="region" aria-label={airQualityStations ? '全臺空品測站地圖' : '全臺氣象測站地圖'}>
+    <div className="map-stage" role="region" aria-label="全臺氣象與空品測站地圖">
       <div ref={mapContainerRef} className="map-canvas" />
       <div className="map-tools" role="group" aria-label="地圖底圖">
         <button
@@ -611,8 +612,18 @@ export default function WeatherMap({
           {locateStatus.text}
         </div>
       )}
-      {!airQualityStations && <div className="map-legend">
-        <span>氣溫 °C</span>
+      <button
+        type="button"
+        className={`map-legend combined-legend${legendOpen ? '' : ' legend-collapsed'}`}
+        aria-label={legendOpen ? '隱藏圖例' : '顯示圖例'}
+        aria-expanded={legendOpen}
+        onClick={() => setLegendOpen(!legendOpen)}
+        title={legendOpen ? '點擊隱藏圖例' : '顯示圖例'}
+      >
+        {legendOpen ? <>
+        {mapLayer === 'none' && <span>未顯示測站</span>}
+        {(mapLayer === 'all' || mapLayer === 'weather') && <>
+        <span>● 氣象站 · 氣溫 °C</span>
         <div className="temperature-gradient" />
         <div className="legend-ticks">
           <span>−1</span>
@@ -621,7 +632,15 @@ export default function WeatherMap({
           <span>30</span>
           <span>38+</span>
         </div>
-      </div>}
+        </>}
+        {(mapLayer === 'all' || mapLayer === 'air') && <>
+        <span className="air-legend-title">■ 空品站 · {airMetric === 'aqi' ? 'AQI' : 'PM2.5 μg/m³'}</span>
+        <div className="combined-aqi-scale">{AQI_LEVELS.map(level => <i key={level.label} title={`${level.label} ${level.range}`} style={{ background: level.color }} />)}</div>
+        <div className="legend-ticks"><span>良好</span><span>普通</span><span>不健康 → 危害</span></div>
+        <small>空品色彩依 AQI 分級</small>
+        </>}
+        </> : <span>顯示圖例</span>}
+      </button>
     </div>
   );
 }
