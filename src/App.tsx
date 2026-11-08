@@ -153,7 +153,20 @@ const parseWeatherNumber = (val: any): number | null => {
 };
 
 export default function App() {
-  const [selectedAirStationId, setSelectedAirStationId] = useState('');
+  const [selectedAirStationId, setSelectedAirStationId] = useState(() => {
+    try {
+      return localStorage.getItem('selectedAirStationId') || '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('selectedAirStationId', selectedAirStationId);
+    } catch (err) {
+      console.error('Failed to save selectedAirStationId to localStorage', err);
+    }
+  }, [selectedAirStationId]);
   const [airMetric, setAirMetric] = useState<'aqi' | 'pm25'>('aqi');
   const [mapLayer, setMapLayer] = useState<'all' | 'weather' | 'air' | 'none'>(() => {
     try {
@@ -1051,6 +1064,10 @@ export default function App() {
         stations={filteredStations}
         selectedStationId={selectedAirStationId ? '' : selectedStationId}
         onSelectStation={chooseStation}
+        onSelectNearbyStation={(id) => {
+          setSelectedAirStationId('');
+          setSelectedStationId(id);
+        }}
         airQualityStations={filteredAirStations}
         airMetric={airMetric}
         selectedAirStationId={selectedAirStationId}

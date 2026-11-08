@@ -34,6 +34,7 @@ interface WeatherMapProps {
   stations: StationItem[];
   selectedStationId: string;
   onSelectStation: (id: string) => void;
+  onSelectNearbyStation: (id: string) => void;
   airQualityStations?: AirQualityStation[];
   airMetric?: 'aqi' | 'pm25';
   selectedAirStationId: string;
@@ -153,6 +154,7 @@ export default function WeatherMap({
   stations,
   selectedStationId,
   onSelectStation,
+  onSelectNearbyStation,
   airQualityStations,
   airMetric = 'aqi',
   selectedAirStationId,
@@ -165,6 +167,7 @@ export default function WeatherMap({
   const mapRef = useRef<L.Map | null>(null);
   const previousLayerRef = useRef(mapLayer);
   const nearbyAirSelectionRef = useRef<string | null>(null);
+  const nearbyWeatherSelectionRef = useRef<string | null>(null);
   const baseTileLayerRef = useRef<L.TileLayer | null>(null);
   const topTileLayerRef = useRef<L.TileLayer | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
@@ -463,6 +466,10 @@ export default function WeatherMap({
       nearbyAirSelectionRef.current = null;
       return;
     }
+    if (!selectedAirStationId && nearbyWeatherSelectionRef.current === selectedStationId) {
+      nearbyWeatherSelectionRef.current = null;
+      return;
+    }
 
     if (selectedAirStationId) {
       const station = airQualityStations?.find(st => st.id === selectedAirStationId);
@@ -525,6 +532,10 @@ export default function WeatherMap({
 
         if (mapLayer === 'air') {
           const nearest = findNearestAirQualityStation(airQualityStations || [], latitude, longitude);
+          if (nearest) {
+            nearbyAirSelectionRef.current = nearest.station.id;
+            onSelectNearbyAirStation(nearest.station.id);
+          }
           setLocateStatus(nearest ? { type: 'success', text: `最近空品測站：${nearest.station.name}` } : { type: 'error', text: '目前無可用的空品測站' });
           setLocating(false);
           setTimeout(() => setLocateStatus(null), 4000);
@@ -559,6 +570,8 @@ export default function WeatherMap({
           }
         });
 
+        nearbyWeatherSelectionRef.current = nearestStation.id;
+        onSelectNearbyStation(nearestStation.id);
         setLocateStatus({
           type: "success",
           text: `定位成功！最近測站：${nearestStation.name}`,
