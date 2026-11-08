@@ -155,7 +155,23 @@ const parseWeatherNumber = (val: any): number | null => {
 export default function App() {
   const [selectedAirStationId, setSelectedAirStationId] = useState('');
   const [airMetric, setAirMetric] = useState<'aqi' | 'pm25'>('aqi');
-  const [mapLayer, setMapLayer] = useState<'all' | 'weather' | 'air' | 'none'>('all');
+  const [mapLayer, setMapLayer] = useState<'all' | 'weather' | 'air' | 'none'>(() => {
+    try {
+      const savedLayer = localStorage.getItem('mapLayer');
+      if (savedLayer === 'all' || savedLayer === 'weather' || savedLayer === 'air' || savedLayer === 'none') {
+        return savedLayer;
+      }
+    } catch {}
+    return 'all';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('mapLayer', mapLayer);
+    } catch (err) {
+      console.error('Failed to save mapLayer to localStorage', err);
+    }
+  }, [mapLayer]);
   const [mapToolsContainer, setMapToolsContainer] = useState<HTMLDivElement | null>(null);
   const [data, setData] = useState<CWAResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
